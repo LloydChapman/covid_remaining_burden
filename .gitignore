@@ -11,6 +11,8 @@ fits/*
 fits/other/*
 other/*
 
+screenlog*
+
 *.docx
 
 upload
