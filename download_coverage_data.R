@@ -6,7 +6,7 @@ library(ggplot2)
 library(osfr)
 library(covidAgeData)
 
-age_strat_data_path = "../COVerAGE_data/"
+age_strat_data_path = "../coverage_data/"
 datapath = function(x) paste0(age_strat_data_path,x)
 
 # Download input data from OSF
@@ -88,11 +88,11 @@ ggplot(out10[!is.na(Deaths) & !(Country %in% lessthan100obs) & Region=="All" & !
     theme(legend.position = "none") +
     facet_wrap(~Country)
 
-names(out10) = tolower(names(out10))
-overlapping_countries = intersect(out10[,unique(country)],vax[,unique(country)])
-ggplot() +
-    geom_line(aes(x=date,y=deaths,group=factor(age),color=factor(age)),out10[!is.na(deaths) & (country %in% overlapping_countries) & region=="All" & !(age %in% c("TOT","UNK","Unknown")) & sex=="b"]) + 
-    geom_point(aes(x=date,y=cum_death_i_both,group=age_group,color=age_group),dt[country %in% overlapping_countries],shape=3,size=0.2) +
-    # theme(legend.position = "none") +
-    facet_wrap(~country)
+# names(out10) = tolower(names(out10))
+# overlapping_countries = intersect(out10[,unique(country)],vax[,unique(country)])
+# ggplot() +
+#     geom_line(aes(x=date,y=deaths,group=factor(age),color=factor(age)),out10[!is.na(deaths) & (country %in% overlapping_countries) & region=="All" & !(age %in% c("TOT","UNK","Unknown")) & sex=="b"]) + 
+#     geom_point(aes(x=date,y=cum_death_i_both,group=age_group,color=age_group),dt[country %in% overlapping_countries],shape=3,size=0.2) +
+#     # theme(legend.position = "none") +
+#     facet_wrap(~country)
 

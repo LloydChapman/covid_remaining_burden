@@ -2,13 +2,9 @@
 get_min_age = function(x) as.numeric(sub("-.*","",sub("\\+|<","-",x)))
 get_max_age = function(x) as.numeric(sub(".*-","",sub("\\+|<","-",x)))
 
-split_deaths = function(deaths,cntry,start_date,end_date,agg_age_group,cols,dataset="ined"){
+split_deaths = function(deaths,who_deaths,cntry,start_date,end_date,agg_age_group,cols){
     deaths_cntry = deaths[country==cntry & date>=start_date & date<=end_date & age_group=="Total",.SD,.SDcols = c("country","date","age_group",cols)]
-    if (dataset=="ined"){
-        cum_deaths_cntry = deaths[country==cntry & date==min(date[country==cntry & date>end_date]) & age_group=="Total",.SD,.SDcols = c("country","date","age_group",cols)]    
-    } else {
-        cum_deaths_cntry = who_deaths[country==cntry & date==min(date[country==cntry & date>end_date],na.rm=T),.(country,date,age_group="Total",cum_deaths_both=deaths_total,cum_deaths_male=NA,cum_deaths_female=NA)]
-    }
+    cum_deaths_cntry = who_deaths[country==cntry & date==min(date[country==cntry & date>end_date],na.rm=T),.(country,date,age_group="Total",cum_deaths_both=deaths_total,cum_deaths_male=NA,cum_deaths_female=NA)]
     
     deaths_cntry[,`:=`(prop_cum_deaths_male=cum_deaths_male/cum_deaths_cntry[,cum_deaths_male],
                        prop_cum_deaths_female=cum_deaths_female/cum_deaths_cntry[,cum_deaths_female],
@@ -45,7 +41,7 @@ split_deaths = function(deaths,cntry,start_date,end_date,agg_age_group,cols,data
     return(deaths1)
 }
 
-clean_ined_death_data = function(ined_deaths,cols){
+clean_ined_death_data = function(ined_deaths,who_deaths,cols){
     deaths = copy(ined_deaths) 
         
     # # Number of datasets per country
@@ -92,18 +88,37 @@ clean_ined_death_data = function(ined_deaths,cols){
     # cumulative number of deaths up to the first date with disaggregated age 
     # groups for each age group by the distribution of the overall number of 
     # deaths in the period with aggregated age groups
-    deaths = split_deaths(deaths,"Denmark",as.Date("2020-04-06"),as.Date("2020-08-10"),"<60",cols)
-    deaths = split_deaths(deaths,"Denmark",as.Date("2020-04-03"),as.Date("2020-04-05"),"<70",cols)
+    deaths = split_deaths(deaths,who_deaths,"Denmark",as.Date("2020-04-06"),as.Date("2020-08-10"),"<60",cols)
+    deaths = split_deaths(deaths,who_deaths,"Denmark",as.Date("2020-04-03"),as.Date("2020-04-05"),"<70",cols)
     
     # Split early deaths in aggregated age groups for Germany
     deaths[country=="Germany" & age_group=="0-59",age_group:="<60"]
-    deaths = split_deaths(deaths,"Germany",as.Date("2020-03-30"),as.Date("2020-04-24"),"<60",cols)
+    deaths = split_deaths(deaths,who_deaths,"Germany",as.Date("2020-03-30"),as.Date("2020-04-24"),"<60",cols)
     
-    # Aggregate 90-99 and 100+ age group data for Germany so for loop below works
+    # Aggregate 90-99 and 100+ age group data for Germany so for loop in construct_data_table() works
     deaths[country=="Germany" & age_group %in% c("90-99","100+"),age_group:="90+"]
     # TODO - make use of cols robust here, so that only those columns are selected
     # deaths = deaths[,lapply(.SD,sum),.SDcols=cols,by=setdiff(names(deaths),cols)]
     deaths = deaths[,lapply(.SD,sum),.SDcols=cols,by=.(region,country,country_no,excelsource,excelsheet,age_group,death_reference_date,death_reference_date_type,date)]
+    
+    min_dates = deaths[,.(date=min(date)),by=.(country)]
+    countries = deaths[,unique(country)]
+    total_deaths_list = vector("list",length(countries))
+    cols3 = c("country","date","deaths_total")
+    for (i in 1:length(countries)){
+        cntry = countries[i]
+        tmp = who_deaths[country==cntry & date<min_dates[country==cntry,date],..cols3]
+        setnames(tmp,"deaths_total","cum_deaths_both")
+        tmp[,age_group:="Total"]
+        total_deaths_list[[i]] = tmp
+    }
+    total_deaths = rbindlist(total_deaths_list)
+    deaths = rbind(deaths,total_deaths,fill=T)
+    
+    for (i in 1:length(countries)){
+        cntry = countries[i]
+        deaths = split_deaths(deaths,who_deaths,cntry,who_deaths[country==cntry,min(date)],min_dates[country==cntry,date]-1,Inf,cols)
+    }
     
     # Exclude totals
     # TODO - update this to incorporate deaths missing ages
@@ -113,8 +128,8 @@ clean_ined_death_data = function(ined_deaths,cols){
     setorder(deaths,country,date,age_group)
 }
 
-clean_COVerAGE_death_data = function(COVerAGE_deaths,cols){
-    out10 = copy(COVerAGE_deaths)
+clean_coverage_death_data = function(coverage_deaths,who_deaths,cols){
+    out10 = copy(coverage_deaths)
     
     # Change variable names to lower case
     names(out10) = tolower(names(out10))
@@ -144,6 +159,7 @@ clean_COVerAGE_death_data = function(COVerAGE_deaths,cols){
     # TODO - correct data for Ireland and Scotland
     out10 = out10[!(country=="Canada" & date==as.Date("2020-04-30"))] # values appear to be incorrect due to missing "TOT" value for 2020-04-30 in inputDB
     out10 = out10[!(country=="Denmark" & date==as.Date("2021-01-05"))] # values appear to be incorrect (lower than previous date)
+    out10 = out10[!(country=="Denmark" & date == as.Date("2021-06-03"))] # values are doubled for some reason
     out10 = out10[!(country=="France" & (between(date,as.Date("2020-12-06"),as.Date("2020-12-11"))) | (date %in% as.Date(c("2020-12-03","2021-06-04","2021-06-21"))))] # corrections to published records lead to negative new deaths
     out10 = out10[!(country=="Greece" & (between(date,as.Date("2021-02-03"),as.Date("2021-02-05")) | (date %in% as.Date(c("2021-03-01")))))]
     # out10 = out10[!(country=="Ireland" & )]
@@ -188,7 +204,7 @@ clean_COVerAGE_death_data = function(COVerAGE_deaths,cols){
     
     for (i in 1:length(countries)){
         cntry = countries[i]
-        out10 = split_deaths(out10,cntry,who_deaths[country==cntry,min(date)],min_dates[country==cntry,date]-1,Inf,paste0(cols1,"_",c("both","male","female")),dataset="COVerAGE")
+        out10 = split_deaths(out10,who_deaths,cntry,who_deaths[country==cntry,min(date)],min_dates[country==cntry,date]-1,Inf,paste0(cols1,"_",c("both","male","female")))
     }
     
     # Reorder
@@ -389,7 +405,7 @@ construct_ifr_data_table = function(ifr,base_dt,min_ages,agegroups){
 }
 
 # construct_data_table = function(agegroups,deaths,pop,cols,ltc_deaths,vax,num_type,ifr){
-construct_data_table = function(agegroups,deaths,pop,cols,ltc_deaths,vax,Ab_delay,ifr){
+construct_data_table = function(agegroups,deaths,pop,cols,ltc_deaths,vax,Ab_delay,ifr,vrnt_prop,ve_params){
     # Get minimum ages of age groups
     min_ages = get_min_age(agegroups)
     max_ages = get_max_age(agegroups)
@@ -600,38 +616,40 @@ construct_data_table = function(agegroups,deaths,pop,cols,ltc_deaths,vax,Ab_dela
     deaths_vax_dt = merge(deaths_dt[date %in% dates2],vax_dt_wide[date %in% dates2],by=c("country","date","age_group"))
     
     # IFR ESTIMATES
-    ifr_dt = copy(base_dt)
-    
-    # # Add IFR estimate from Levin et al Eur Jrnl Epi 2020
-    # ifr_dt[,`:=`(ifr=10^(-3.27+0.0524*age)/100)]
-    # # Calculate 95% CI for IFR assuming FOR NOW no covariance between intercept and 
-    # # slope estimates
-    # # TODO - estimate intercept and slope covariance from lower and upper bounds in 
-    # # supplementary spreadsheet in Levin et al 2020
-    # se_intcpt = 0.07*log(10)
-    # se_slope = 0.0013*log(10)
-    # ifr_dt[,se_ifr:=sqrt(se_intcpt^2+se_slope^2*age^2)*ifr]
-    # ifr_dt[,`:=`(ifr_lb=pmax(0,ifr-qnorm(0.975)*se_ifr),ifr_ub=pmin(1,ifr+qnorm(0.975)*se_ifr))]
+    # ifr_dt = copy(base_dt)
     # 
-    # ifr_dt[,age_group:=cut(age,c(min_ages,Inf),labels=agegroups,right=F)]
-    # cols2 = c("ifr","se_ifr","ifr_lb","ifr_ub")
-    # ifr_dt=ifr_dt[,lapply(.SD,function(x) sum(x*population)/sum(population)),.SDcols=cols2,by=.(country,age_group)]
+    # # # Add IFR estimate from Levin et al Eur Jrnl Epi 2020
+    # # ifr_dt[,`:=`(ifr=10^(-3.27+0.0524*age)/100)]
+    # # # Calculate 95% CI for IFR assuming FOR NOW no covariance between intercept and 
+    # # # slope estimates
+    # # # TODO - estimate intercept and slope covariance from lower and upper bounds in 
+    # # # supplementary spreadsheet in Levin et al 2020
+    # # se_intcpt = 0.07*log(10)
+    # # se_slope = 0.0013*log(10)
+    # # ifr_dt[,se_ifr:=sqrt(se_intcpt^2+se_slope^2*age^2)*ifr]
+    # # ifr_dt[,`:=`(ifr_lb=pmax(0,ifr-qnorm(0.975)*se_ifr),ifr_ub=pmin(1,ifr+qnorm(0.975)*se_ifr))]
+    # # 
+    # # ifr_dt[,age_group:=cut(age,c(min_ages,Inf),labels=agegroups,right=F)]
+    # # cols2 = c("ifr","se_ifr","ifr_lb","ifr_ub")
+    # # ifr_dt=ifr_dt[,lapply(.SD,function(x) sum(x*population)/sum(population)),.SDcols=cols2,by=.(country,age_group)]
+    # 
+    # names(ifr) = tolower(names(ifr))
+    # min_ages_ifr = get_min_age(ifr[,age_group])
+    # 
+    # # Add IFR age groups
+    # ifr_dt[,age_group:=cut(age,c(min_ages_ifr,Inf),labels=ifr[,age_group],right=F)]
+    # 
+    # # Merge with IFR data table
+    # ifr_dt = merge(ifr_dt,ifr[,.(age_group,ifr=median_perc_mean/100,ifr_lb=ci_95_lb_mean/100,ifr_ub=ci_95_ub_mean/100)],by="age_group")
+    # 
+    # # Change age groups
+    # ifr_dt[,age_group := cut(age,c(min_ages,Inf),labels=agegroups,right=F)]
+    # 
+    # # Calculate population-weighted average for each age group
+    # cols2 = c("ifr","ifr_lb","ifr_ub")
+    # ifr_dt = ifr_dt[,lapply(.SD,function(x) sum(x*population)/sum(population)),.SDcols=cols2,by=c("country","age_group")]    
     
-    names(ifr) = tolower(names(ifr))
-    min_ages_ifr = get_min_age(ifr[,age_group])
-    
-    # Add IFR age groups
-    ifr_dt[,age_group:=cut(age,c(min_ages_ifr,Inf),labels=ifr[,age_group],right=F)]
-    
-    # Merge with IFR data table
-    ifr_dt = merge(ifr_dt,ifr[,.(age_group,ifr=median_perc_mean/100,ifr_lb=ci_95_lb_mean/100,ifr_ub=ci_95_ub_mean/100)],by="age_group")
-    
-    # Change age groups
-    ifr_dt[,age_group := cut(age,c(min_ages,Inf),labels=agegroups,right=F)]
-    
-    # Calculate population-weighted average for each age group
-    cols2 = c("ifr","ifr_lb","ifr_ub")
-    ifr_dt = ifr_dt[,lapply(.SD,function(x) sum(x*population)/sum(population)),.SDcols=cols2,by=c("country","age_group")]    
+    ifr_dt = construct_ifr_data_table(ifr,base_dt,min_ages,agegroups)
     
     # Plot country IFRs
     ggplot(ifr_dt,aes(x=age_group,y=ifr,group=country,color=country)) + 
@@ -644,46 +662,52 @@ construct_data_table = function(agegroups,deaths,pop,cols,ltc_deaths,vax,Ab_dela
     # # N.B. Countries without vax data dropped here - check this!
     # dt = merge(dt,num_type[,.(country,prop_va,prop_vb)],by="country")
     
-    # Vaccine efficacy parameters
-    # # eiX_vYZ = efficacy of dose Z of vaccine Y against infection with strain X
-    # ei_va2 = 0.68
-    # ei2_va2 = 0.68
-    # ei3_va2 = 0.6154
-    # ei_vb2 = 0.85
-    # ei2_vb2 = 0.85
-    # ei3_vb2 = 0.7999
-    # ed_vYZiX = efficacy of dose Z of vaccine Y against disease given infection with strain X
-    ed_va2i = 0.3125
-    ed_va2i2 = 0.3125
-    ed_va2i3 = 0.2353094
-    ed_vb2i = 0.2667
-    ed_vb2i2 = 0.2667
-    ed_vb2i3 = 0.187906
-    # em_vYZdX = efficacy of dose Z of vaccine Y against death given disease from strain X
-    em_va2d = 0.77
-    em_va2d2 = 0.77
-    em_va2d3 = 0.6766406
-    em_vb2d = 0.55
-    em_vb2d2 = 0.55
-    em_vb2d3 = 0.52
+    # ESTIMATED VARIANT PROPORTIONS
+    # Cast variant proportion data table to wide format
+    vrnt_prop_wide = dcast(vrnt_prop,country+date~vrnt,value.var = "prop_vrnt")
+    cols6 = paste0("prop_vrnt",c("","2","3"))
+    setnames(vrnt_prop_wide,c("Other","Alpha","Delta"),cols6)
+    
+    # Merge with overall data table
+    dt = merge(dt,vrnt_prop_wide,by=c("country","date"),all.x=T)
+    # Backfill variant proportions with first non-NA observation
+    dt[,(cols6):=nafill(.SD,type="nocb"),.SDcols=cols6,by=.(country)]
     
     # # FOR NOW - use efficacy values for wild-type variant (N.B. same as for Delta)
     # # TODO - use proportion of each vaccine by age group and time and proportion of 
     # # each variant over time to calculate more detailed age- and time-dependent IFR
     # # dt[,`:=`(ei=prop_va*ei_va2+prop_vb*ei_vb2,ed=prop_va*ed_va2i+prop_vb*ed_vb2i,em=prop_va*em_va2d+prop_vb*em_vb2d)]
     # dt[,`:=`(ed=prop_va*ed_va2i+prop_vb*ed_vb2i,em=prop_va*em_va2d+prop_vb*em_vb2d)]
+    dt[,`:=`(ei=fifelse(!(prop_va==0 & prop_vb==0),prop_va/(prop_va+prop_vb)*(prop_vrnt*ve_params$ei_va2+prop_vrnt2*ve_params$ei2_va2+prop_vrnt3*ve_params$ei3_va2) +
+                            prop_vb/(prop_va+prop_vb)*(prop_vrnt*ve_params$ei_vb2+prop_vrnt2*ve_params$ei2_vb2+prop_vrnt3*ve_params$ei3_vb2),0),
+             ed=fifelse(!(prop_va==0 & prop_vb==0),prop_va/(prop_va+prop_vb)*(prop_vrnt*ve_params$ed_va2i+prop_vrnt2*ve_params$ed_va2i2+prop_vrnt3*ve_params$ed_va2i3) +
+                            prop_vb/(prop_va+prop_vb)*(prop_vrnt*ve_params$ed_vb2i+prop_vrnt2*ve_params$ed_vb2i2+prop_vrnt3*ve_params$ed_vb2i3),0),
+             em=fifelse(!(prop_va==0 & prop_vb==0),prop_va/(prop_va+prop_vb)*(prop_vrnt*ve_params$em_va2d+prop_vrnt2*ve_params$em_va2d2+prop_vrnt3*ve_params$em_va2d3) +
+                            prop_vb/(prop_va+prop_vb)*(prop_vrnt*ve_params$em_vb2d+prop_vrnt2*ve_params$em_vb2d2+prop_vrnt3*ve_params$em_vb2d3),0),
+             et=fifelse(!(prop_va==0 & prop_vb==0),prop_va/(prop_va+prop_vb)*(prop_vrnt*ve_params$et_va2i+prop_vrnt2*ve_params$et_va2i2+prop_vrnt3*ve_params$et_va2i3) +
+                            prop_vb/(prop_va+prop_vb)*(prop_vrnt*ve_params$et_vb2i+prop_vrnt2*ve_params$et_vb2i2+prop_vrnt3*ve_params$et_vb2i3),0))]
     
     # Calculate IFRs under vaccination with different vaccine types
-    # dt[,ifr_v:=(1-ed)*(1-em)*ifr]
-    dt[,`:=`(ifr_va=(1-ed_va2i)*(1-em_va2d)*ifr,ifr_vb=(1-ed_vb2i)*(1-em_vb2d)*ifr)]
+    dt[,ifr_v:=(1-em)*ifr]
+    # dt[,`:=`(ifr_va=(prop_vrnt*(1-ed_va2i)*(1-em_va2d) +
+    #                      prop_vrnt2*(1-ed_va2i2)*(1-em_va2d2) + 
+    #                      prop_vrnt3*(1-ed_va2i3)*(1-em_va2d3))*ifr,
+    #          ifr_vb=(prop_vrnt*(1-ed_vb2i)*(1-em_vb2d) +
+    #                      prop_vrnt2*(1-ed_vb2i2)*(1-em_vb2d2) +
+    #                      prop_vrnt3*(1-ed_vb2i3)*(1-em_vb2d3))*ifr)]
     
     # Calculate IFR over time
-    # dt[,ifr_t:=(1-cum_prop_v)*ifr+cum_prop_v*ifr_v]
-    dt[,ifr_t := (1-cum_prop_va-cum_prop_vb)*ifr + cum_prop_va*ifr_va + cum_prop_vb*ifr_vb]
+    # dt[,ifr_t := ifr]
+    dt[,cum_prop_v:=cum_prop_va+cum_prop_vb]
+    dt[,ifr_t:=((1-cum_prop_v/(1-ei*cum_prop_v))*ifr+cum_prop_v/(1-ei*cum_prop_v)*(1-ei)*(1-ed)/(1+et)*ifr_v)]
+    # dt[,ifr_t := (1-cum_prop_va-cum_prop_vb)*ifr + cum_prop_va*ifr_va + cum_prop_vb*ifr_vb]
+    # dt[,ifr_t := (1-cum_prop_va-cum_prop_vb)*(prop_vrnt+prop_vrnt2+prop_vrnt3)*ifr + 
+    #        cum_prop_va*ifr_va + 
+    #        cum_prop_vb*ifr_vb]
     
     # Plot population-weighted average IFR over time for all countries
-    ggplot(dt[,.(ifr_t=sum(ifr_t*population)/sum(population)),by=.(country,date)],
-           aes(x=date,y=ifr_t,group=country,color=country)) + geom_line()
+    print(ggplot(dt[,.(ifr_t=sum(ifr_t*population)/sum(population)),by=.(country,date)],
+           aes(x=date,y=ifr_t,group=country,color=country)) + geom_line())
     # ggsave("./output/avg_ifr_over_time.pdf",width = 5,height = 4)
     
     return(dt)
@@ -692,6 +716,11 @@ construct_data_table = function(agegroups,deaths,pop,cols,ltc_deaths,vax,Ab_dela
 # Deconvolution function
 deconv = function(dt,idd_pmf,method = "ride"){
     dt1 = copy(dt)
+    
+    # Make sure that rows of data table are in the correct order so that 
+    # deconvolution output can just be added to table as a column
+    # N.B. This is essential!
+    setorder(dt1,country,age_group,date)
     
     countries = dt1[,unique(country)]
     
@@ -740,7 +769,7 @@ deconv = function(dt,idd_pmf,method = "ride"){
             deaths_i_sts = sts(dt_list[[i]][,deaths_i_both],start=c(lubridate::year(min(dates)),yday(min(dates))),frequency = 365)
             
             # Deconvolve death curve to infection curve of those that died
-            control = list(k = 2,eps = c(0.01,2),Tmark = nrow(deaths_i_sts) - mean_idd,B=10,alpha=0.05,eq3a.method = "C")
+            control = list(k = 2,eps = c(0.01,2),Tmark = nrow(deaths_i_sts) - mean_idd,B=-1,alpha=0.05,eq3a.method = "C")
             deaths_i_stsBP = backprojNP(deaths_i_sts,idd_pmf,control = control)
             
             # list(deaths_i_stsBP@upperbound,deaths_i_stsBP@lambda)
@@ -749,13 +778,13 @@ deconv = function(dt,idd_pmf,method = "ride"){
         
     } else if (method == "ride"){ # RIDE ALGORITHM
         exposures_dead_list = vector("list",length(dt_list))
-        for (i in 1:length(dt_list)){
-        # exposures_dead_list = foreach(i=1:length(dt_list)) %dopar% {
+        # for (i in 1:length(dt_list)){
+        exposures_dead_list = foreach(i=1:length(dt_list)) %dopar% {
             # TODO - check if delay distribution is only defined from day 1 onwards in incidental
             exposures_model = fit_incidence(dt_list[[i]][,as.integer(round(deaths_i_both))],idd_pmf[2:length(idd_pmf)]/sum(idd_pmf[2:length(idd_pmf)]))
             
-            # list(exposures_model$Ihat,exposures_model$Isamps)
-            exposures_dead_list[[i]] = list(exposures_model$Ihat,exposures_model$Isamps)
+            list(exposures_model$Ihat,exposures_model$Isamps)
+            # exposures_dead_list[[i]] = list(exposures_model$Ihat,exposures_model$Isamps)
         }
         
     } else {
