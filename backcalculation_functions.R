@@ -699,7 +699,7 @@ construct_data_table = function(agegroups,deaths,pop,cols,ltc_deaths,vax,Ab_dela
     # Calculate IFR over time
     # dt[,ifr_t := ifr]
     dt[,cum_prop_v:=cum_prop_va+cum_prop_vb]
-    dt[,ifr_t:=((1-cum_prop_v/(1-ei*cum_prop_v))*ifr+cum_prop_v/(1-ei*cum_prop_v)*(1-ei)*(1-ed)/(1+et)*ifr_v)]
+    dt[,ifr_t:=((1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v))*ifr+cum_prop_v/(1-ei*cum_prop_v)*(1-ei)*(1-ed)*(1-et)*ifr_v)]
     # dt[,ifr_t := (1-cum_prop_va-cum_prop_vb)*ifr + cum_prop_va*ifr_va + cum_prop_vb*ifr_vb]
     # dt[,ifr_t := (1-cum_prop_va-cum_prop_vb)*(prop_vrnt+prop_vrnt2+prop_vrnt3)*ifr + 
     #        cum_prop_va*ifr_va + 
@@ -882,65 +882,199 @@ plot_deaths = function(dt){
     return(p)
 }
 
-calc_init_condns = function(inc_dt,vax_dt_wide){
-    # Assume initially no infected individuals, so numbers in compartments are 
-    # all 0 apart from S
-    # FOR NOW - assume no waning
-    # TODO - include L
-    # TODO - include waning. N.B. will also need to update model for IFR
+# calc_init_condns = function(inc_dt,vax_dt_wide){
+#     # Assume initially no infected individuals, so numbers in compartments are 
+#     # all 0 apart from S
+#     # FOR NOW - assume no waning
+#     # TODO - include L
+#     # TODO - include waning. N.B. will also need to update model for IFR
+#     
+#     inc_dt1 = copy(inc_dt)
+#     
+#     # Calculate differences in numbers entering and leaving compartments at each
+#     # time point 
+#     inc_dt1[,`:=`(diffE=nS_E-nE_I,
+#                  diffIp=nE_Ip-nIp_Is,
+#                  diffIs=nIp_Is-nIs_R,
+#                  diffIa=nE_Ia-nIa_R,
+#                  diffR=nIs_R+nIa_R)]
+#     # Calculate numbers in each compartment at each time point
+#     cols = c("E","Ip","Is","Ia","R")
+#     setorder(inc_dt1,country,vrnt,age_group_model,date)
+#     inc_dt1[,(cols):=lapply(.SD,cumsum),.SDcols=paste0("diff",cols),by=.(country,vrnt,age_group_model)]
+#     # # Calculate compartment prevalences
+#     # inc_dt1[,paste0("prev",cols):=lapply(.SD,function(x) x/population),.SDcols=cols]
+#     
+#     incS_dt = inc_dt1[,.(nS_E=sum(nS_E)),by=.(country,age_group_model,date)]
+#     incS_dt = merge(incS_dt,vax_dt_wide[,!c("prop_va","prop_vb","cum_prop_va","cum_prop_vb")],by=c("country","date","age_group_model"))
+#     # TODO - update when L is included
+#     incS_dt[,`:=`(diffS=-nS_E-nS_Va1-nS_Vb1,
+#                   diffVa1=nS_Va1-nVa1_Va2,
+#                   diffVa2=nVa1_Va2,
+#                   diffVb1=nS_Vb1-nVb1_Vb2,
+#                   diffVb2=nVb1_Vb2)]
+#     setorder(incS_dt,country,age_group_model,date)
+#     cols1 = c("S","Va1","Va2","Vb1","Vb2")
+#     incS_dt[,(cols1):=lapply(.SD,cumsum),.SDcols=paste0("diff",cols1),by=.(country,age_group_model)]
+#     # N.B. S in line above is still cumulative number of susceptibles that 
+#     # have lost susceptibility so need to add number initially susceptible 
+#     # (population)
+#     incS_dt[,S:=pmax(0,population+S)] # minumum of 0 once everybody has been infected/vaccinated
+#     # incS_dt[,paste0("prev",cols1):=lapply(.SD,function(x) x/population),.SDcols=cols1]
+#     
+#     inc_dt1[,vrnt:=fcase(vrnt=="Other","",
+#                         vrnt=="Alpha","2",
+#                         vrnt=="Delta","3")]
+#     inc_dt_wide = dcast(inc_dt1,country+age_group_model+date+population ~ vrnt,sep = "",value.var = cols)
+#     
+#     # Extract current prevalences
+#     cols2 = c("country","age_group_model","date",cols1)
+#     prev_dt = merge(inc_dt_wide,incS_dt[,..cols2],by=c("country","age_group_model","date"))
+#     
+#     # Calculate compartment prevalences
+#     cols3 = setdiff(names(prev_dt),c("country","age_group_model","date","population"))
+#     prev_dt[,paste0("prev",cols3):=lapply(.SD,function(x) x/population),.SDcols=cols3]
+#     
+#     ggplot(melt(prev_dt[age_group_model=="50-54"],measure.vars=patterns("prevE"),value.name = "prevE"),aes(x=date,y=prevE,color=variable)) + 
+#         geom_line() + 
+#         facet_wrap(~country)
+#     ggplot(melt(prev_dt[age_group_model=="50-54"],measure.vars=patterns("prevR"),value.name = "prevR"),aes(x=date,y=prevR,color=variable)) + 
+#         geom_line() + 
+#         facet_wrap(~country)
+#     
+#     return(prev_dt)
+# }
+
+calc_init_condns = function(inc_dt,vax_dt_wide,agegroups_model,covy_dt,vrnt_prop,ve_params,dE,dIp,dIs,dIa){
+    prev_dt = copy(inc_dt)
     
-    inc_dt1 = copy(inc_dt)
+    countries = prev_dt[,unique(country)]
+    ncountries = length(countries)
+    
+    # Cast variant proportion data table to wide format
+    vrnt_prop_wide = dcast(vrnt_prop,country+date~vrnt,value.var = "prop_vrnt")
+    cols = paste0("prop_vrnt",c("","2","3"))
+    setnames(vrnt_prop_wide,c("Other","Alpha","Delta"),cols)
+    
+    # Merge with overall data table
+    prev_dt = merge(prev_dt,vrnt_prop_wide,by=c("country","date"),all.x=T)
+    # Backfill variant proportions with first non-NA observation
+    prev_dt[,(cols):=nafill(.SD,type="nocb"),.SDcols=cols,by=.(country)]
+    
+    # Merge with vaccination data
+    prev_dt = merge(prev_dt,vax_dt_wide[,!"population"],by=c("country","age_group_model","date"),all.x=T)
+    
+    # Calculate relative proportions of each vaccine type
+    prev_dt[,`:=`(p_va=prop_va/(prop_va+prop_vb),p_vb=prop_vb/(prop_va+prop_vb))]
+    
+    # Calculate average vaccine efficacy over time against 3 variants, 
+    # accounting for changing vaccine type proportions and variant proportions
+    prev_dt[,`:=`(ei=fifelse(!(prop_va==0 & prop_vb==0),
+                             p_va*(prop_vrnt*ve_params$ei_va2+prop_vrnt2*ve_params$ei2_va2+prop_vrnt3*ve_params$ei3_va2)+
+                                 p_vb*(prop_vrnt*ve_params$ei_vb2+prop_vrnt2*ve_params$ei2_vb2+prop_vrnt3*ve_params$ei3_vb2),0),
+                  ed=fifelse(!(prop_va==0 & prop_vb==0),
+                             p_va*(prop_vrnt*ve_params$ed_va2i+prop_vrnt2*ve_params$ed_va2i2+prop_vrnt3*ve_params$ed_va2i3)+
+                                 p_vb*(prop_vrnt*ve_params$ed_vb2i+prop_vrnt2*ve_params$ed_vb2i2+prop_vrnt3*ve_params$ed_vb2i3),0),
+                  eh=fifelse(!(prop_va==0 & prop_vb==0),
+                             p_va*(prop_vrnt*ve_params$eh_va2d+prop_vrnt2*ve_params$eh_va2d2+prop_vrnt3*ve_params$eh_va2d3)+
+                                 p_vb*(prop_vrnt*ve_params$eh_vb2d+prop_vrnt2*ve_params$eh_vb2d2+prop_vrnt3*ve_params$eh_vb2d3),0),
+                  em=fifelse(!(prop_va==0 & prop_vb==0),
+                             p_va*(prop_vrnt*ve_params$em_va2d+prop_vrnt2*ve_params$em_va2d2+prop_vrnt3*ve_params$em_va2d3)+
+                                 p_vb*(prop_vrnt*ve_params$em_vb2d+prop_vrnt2*ve_params$em_vb2d2+prop_vrnt3*ve_params$em_vb2d3),0),
+                  et=fifelse(!(prop_va==0 & prop_vb==0),
+                             p_va*(prop_vrnt*ve_params$et_va2i+prop_vrnt2*ve_params$et_va2i2+prop_vrnt3*ve_params$et_va2i3)+
+                                 p_vb*(prop_vrnt*ve_params$et_vb2i+prop_vrnt2*ve_params$et_vb2i2+prop_vrnt3*ve_params$et_vb2i3),0))]
+    
+    # TODO - THIS LINE NEEDS CORRECTING ONCE ISSUE WITH et AND ed VALUES IS RESOLVED
+    prev_dt[,`:=`(q=(1-ei)*(1-ed)*(1-et),r=(1-ei)*ed*(1-et),s=(1-ei)*et)]
+    # prev_dt[,`:=`(q=(1-ei)*(1-ed),r=(1-ei)*(ed-et),s=(1-ei)*et)]
+    
+    # Calculate cumulative proportion vaccinated with either type A or type B vaccine
+    prev_dt[,cum_prop_v:=cum_prop_va+cum_prop_vb]
+    
+    # Calculate numbers vaccinated
+    # TODO - update this to include first doses
+    prev_dt[,nS_V:=nVa1_Va2+nVb1_Vb2]
+    
+    # Calculate numbers of susceptibles and vaccinated individuals infected
+    prev_dt[,`:=`(nS_E=(1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v))*exposures,
+                  nV_E=(1-ei)*(1-ed)*(1-et)*cum_prop_v/(1-ei*cum_prop_v)*exposures,
+                  nV_L=(1-ei)*ed*(1-et)*cum_prop_v/(1-ei*cum_prop_v)*exposures,
+                  nV_R=(1-ei)*et*cum_prop_v/(1-ei*cum_prop_v)*exposures)]
+    
+    # Merge with age-dependent symptomatic fraction
+    prev_dt = merge(prev_dt,covy_dt,by="age_group_model")
+    
+    # Calculate number leaving susceptible compartment at each time point
+    prev_dt[,diffS:=-nS_E-nS_V]
+    # Calculate number of susceptibles at each time point ensuring it can't go
+    # negative
+    setorder(prev_dt,country,age_group_model,date)
+    prev_dt[,S:=pmax(population+cumsum(diffS),0),by=.(country,age_group_model)]
+    
+    # Where susceptibles are fully depleted, set exposures and vaccinations among susceptibles to 0
+    print(prev_dt[S==0 & country!="Finland",.(nS_E=sum(nS_E)),by=.(country)])
+    prev_dt[S==0,`:=`(nS_E=0,nS_V=0)]
+    
+    # Convolve exposures with latent period distribution to get infections
+    prev_dt[,nE_I:=disc_conv(nS_E+nV_E,dE),by=.(country,age_group_model)]
+    prev_dt[,nL_Ia:=disc_conv(nV_L,dE),by=.(country,age_group_model)]
+    
+    # Calculate symptomatic and asymptomatic infections
+    prev_dt[,`:=`(nE_Ip=y*nE_I,nE_Ia=(1-y)*nE_I)]
+    
+    # Convolve infections to get numbers entering different infection states
+    prev_dt[,nIp_Is:=disc_conv(nE_Ip,dIp),by=.(country,age_group_model)]
+    prev_dt[,nIs_R:=disc_conv(nIp_Is,dIs),by=.(country,age_group_model)]
+    prev_dt[,nIa_R:=disc_conv(nE_Ia+nL_Ia,dIa),by=.(country,age_group_model)]
     
     # Calculate differences in numbers entering and leaving compartments at each
-    # time point 
-    inc_dt1[,`:=`(diffE=nS_E-nE_I,
-                 diffIp=nE_Ip-nIp_Is,
-                 diffIs=nIp_Is-nIs_R,
-                 diffIa=nE_Ia-nIa_R,
-                 diffR=nIs_R+nIa_R)]
+    # time point
+    prev_dt[,`:=`(diffV=nS_V-nV_E-nV_L-nV_R,
+                  diffE=nS_E+nV_E-nE_I,
+                  diffL=nV_L-nL_Ia,
+                  diffIp=nE_Ip-nIp_Is,
+                  diffIs=nIp_Is-nIs_R,
+                  diffIa=nE_Ia+nL_Ia-nIa_R,
+                  diffR=nIs_R+nIa_R+nV_R)]
+    
     # Calculate numbers in each compartment at each time point
-    cols = c("E","Ip","Is","Ia","R")
-    setorder(inc_dt1,country,vrnt,age_group_model,date)
-    inc_dt1[,(cols):=lapply(.SD,cumsum),.SDcols=paste0("diff",cols),by=.(country,vrnt,age_group_model)]
-    # # Calculate compartment prevalences
-    # inc_dt1[,paste0("prev",cols):=lapply(.SD,function(x) x/population),.SDcols=cols]
+    cols1 = c("V","E","L","Ip","Is","Ia","R")
     
-    incS_dt = inc_dt1[,.(nS_E=sum(nS_E)),by=.(country,age_group_model,date)]
-    incS_dt = merge(incS_dt,vax_dt_wide[,!c("prop_va","prop_vb","cum_prop_va","cum_prop_vb")],by=c("country","date","age_group_model"))
-    # TODO - update when L is included
-    incS_dt[,`:=`(diffS=-nS_E-nS_Va1-nS_Vb1,
-                  diffVa1=nS_Va1-nVa1_Va2,
-                  diffVa2=nVa1_Va2,
-                  diffVb1=nS_Vb1-nVb1_Vb2,
-                  diffVb2=nVb1_Vb2)]
-    setorder(incS_dt,country,age_group_model,date)
-    cols1 = c("S","Va1","Va2","Vb1","Vb2")
-    incS_dt[,(cols1):=lapply(.SD,cumsum),.SDcols=paste0("diff",cols1),by=.(country,age_group_model)]
-    # N.B. S in line above is still cumulative number of susceptibles that have
-    # have lost susceptibility so need to add number initially susceptible 
-    # (population)
-    incS_dt[,S:=pmax(0,population+S)] # minumum of 0 once everybody has been infected/vaccinated
-    # incS_dt[,paste0("prev",cols1):=lapply(.SD,function(x) x/population),.SDcols=cols1]
+    # Calculate numbers in each compartment at each time point
+    prev_dt[,(cols1):=lapply(.SD,cumsum),.SDcols=paste0("diff",cols1),by=.(country,age_group_model)]
     
-    inc_dt1[,vrnt:=fcase(vrnt=="Other","",
-                        vrnt=="Alpha","2",
-                        vrnt=="Delta","3")]
-    inc_dt_wide = dcast(inc_dt1,country+age_group_model+date+population ~ vrnt,sep = "",value.var = cols)
+    # Calculate prevalences
+    prev_dt[,(c("prevS",paste0("prev",cols1))):=lapply(.SD,function(x) x/population),.SDcols=c("S",cols1)]
     
-    # Extract current prevalences
-    cols2 = c("country","age_group_model","date",cols1)
-    prev_dt = merge(inc_dt_wide,incS_dt[,..cols2],by=c("country","age_group_model","date"))
-    
-    # Calculate compartment prevalences
-    cols3 = setdiff(names(prev_dt),c("country","age_group_model","date","population"))
-    prev_dt[,paste0("prev",cols3):=lapply(.SD,function(x) x/population),.SDcols=cols3]
-    
-    ggplot(melt(prev_dt[age_group_model=="50-54"],measure.vars=patterns("prevE"),value.name = "prevE"),aes(x=date,y=prevE,color=variable)) + 
-        geom_line() + 
-        facet_wrap(~country)
-    ggplot(melt(prev_dt[age_group_model=="50-54"],measure.vars=patterns("prevR"),value.name = "prevR"),aes(x=date,y=prevR,color=variable)) + 
-        geom_line() + 
+    # Plot to check
+    ggplot(prev_dt[country!="Finland"],aes(x=date,y=prevS,color=age_group_model)) +
+        geom_line() +
         facet_wrap(~country)
     
     return(prev_dt)
+}
+
+calc_rem_burden = function(prev_dt,ihr,ifr_dt){
+    max_dates = prev_dt[,.(date=max(date)),by=.(country)]
+    
+    curr_dt = merge(max_dates,prev_dt,by=c("country","date"),all.x=T)
+    
+    # Merge with IHR and IFR data tables
+    curr_dt = merge(curr_dt,ihr,by="age_group_model")
+    curr_dt = merge(curr_dt,ifr_dt,by=c("country","age_group_model"))
+    
+    # Calculate maximum number of hospitalisations and deaths among remaining 
+    # susceptibles if they were all infected now
+    curr_dt[,`:=`(cum_hosp_u=S*y*ihr,cum_deaths_u=S*y*ifr)]
+    # Calculate maximum number of hospitalisations and deaths among vaccinated
+    # individuals if they were infected now
+    curr_dt[,exposures_v:=pmin(nV_E/nS_E*S,V)]
+    curr_dt[,`:=`(cum_hosp_v=exposures_v*y*ihr,cum_deaths_v=exposures_v*y*ifr)]
+    
+    # Calculate total maximum hospitalisations and deaths
+    curr_dt[,`:=`(cum_hosp=cum_hosp_u+cum_hosp_v,cum_deaths=cum_deaths_u+cum_deaths_v)]
+    curr_dt[,`:=`(cum_inc_hosp=cum_hosp/population,cum_inc_deaths=cum_deaths/population)]
+    
+    return(curr_dt)
 }

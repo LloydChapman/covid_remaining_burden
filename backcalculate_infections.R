@@ -18,7 +18,8 @@ library(cowplot)
 library(stringr)
 
 source("./backcalculation_functions.R")
-source("./initial_conditions_functions.R")
+# source("./initial_conditions_functions.R")
+# source("./simulation_functions.R")
 
 # TODO:
 # - sort out alignment of dates for deaths data and vaccination data - currently
@@ -84,15 +85,15 @@ cm_populations = rbind(cm_populations[name != "United Kingdom"], popUK)
 cm_matrices = c(cm_matrices, matricesUK)
 
 # Get names of countries that are in cm_matrices
-regions = cm_populations[location_type==4 & name %in% names(cm_matrices),unique(name)]
+regions = cm_populations[location_type==4 & name %in% names(cm_matrices),as.character(unique(name))]
 
 # Set delay distributions
 dE  = cm_delay_gamma(2.5, 2.5, t_max = 15, t_step = 1)$p
 dIp = cm_delay_gamma(2.5, 4.0, t_max = 15, t_step = 1)$p
 dIs = cm_delay_gamma(2.5, 4.0, t_max = 15, t_step = 1)$p
 dIa = cm_delay_gamma(5.0, 4.0, t_max = 15, t_step = 1)$p
-dHosp = cm_delay_gamma(6.0 + 2.5, 0.71, 60, 1)$p
-dDeath = cm_delay_lnorm(15, 0.9, 60, 1)$p
+dHosp = cm_delay_gamma(6.0 + 2.5, 0.71, t_max = 60, t_step = 1)$p
+dDeath = cm_delay_lnorm(15, 0.9, t_max = 60, t_step = 1)$p
 
 # Build parameters for different regions ###
 params = cm_parameters_SEI3R(regions, deterministic = T, 
@@ -104,8 +105,24 @@ params = cm_parameters_SEI3R(regions, deterministic = T,
                              dIa = dIa)
 params = cm_split_matrices_ex_in(params, 15)
 
+covid_scenario = qread(datapath("2-linelist_both_fit_fIa0.5-rbzvih.qs"));
+cols7 = names(covid_scenario)[grep("u_",names(covid_scenario))]
+covu = unname(rep(colMeans(covid_scenario[,..cols7]), each = 2))
+cols4 = names(covid_scenario)[grep("y_",names(covid_scenario))]
+covy = unname(rep(colMeans(covid_scenario[,..cols4]), each = 2))
+
+for (i in seq_along(params$pop)) {
+    params$pop[[i]]$u = 0.08*covu / mean(covu);
+    params$pop[[i]]$u2 = 0.08*covu / mean(covu);
+    params$pop[[i]]$u3 = 0.08*covu / mean(covu);
+    params$pop[[i]]$y = covy;
+    params$pop[[i]]$y2 = covy;
+    params$pop[[i]]$y3 = covy;
+}
+
 # get list of age groups in covidm
-agegroups_model <- params$pop[[1]]$group_names
+agegroups_model = params$pop[[1]]$group_names
+agegroups_model = factor(agegroups_model,levels = agegroups_model)
 min_ages_model = get_min_age(agegroups_model)
 # max_ages_model = get_max_age(agegroups_model)
 # max_ages_model[is.na(max_ages_model)] = Inf
@@ -625,32 +642,32 @@ ggplot(inc_dt,aes(x=date,y=exposures,group=age_group_model,color=age_group_model
 #
 # # Add population data
 # base_dt = merge(base_dt,pop[,.(iso3,age,population)],by.x=c("country_code","age"),by.y=c("iso3","age"),all.x=T)
-
-# Read in age-dependent symptomatic fraction
-covid_scenario = qread(datapath("2-linelist_both_fit_fIa0.5-rbzvih.qs"));
-cols4 = names(covid_scenario)[grep("y_",names(covid_scenario))]
-# covy = colMeans(covid_scenario[,..cols4])
-#
-# min_ages_y = as.integer(sub("y_","",names(covy)))
-# covy = data.table(age_group=c(paste0(min_ages_y[1:(length(min_ages_y)-1)],"-",min_ages_y[2:length(min_ages_y)]-1),paste0(min_ages_y[length(min_ages_y)],"+")),y=covy)
-# covy_dt = copy(base_dt)
-# covy_dt[,age_group:=cut(age,c(min_ages_y,Inf),labels=covy[,age_group],right=F)]
-# covy_dt = merge(covy_dt,covy,by="age_group",all.x=T)
-#
-# # Change age groups
-# covy_dt[,age_group:=cut(age,c(min_ages,Inf),labels=agegroups,right=F)]
-# # Calculate population-weighted average symptomatic fraction
-# covy_dt = covy_dt[,.(y=sum(y*population)/sum(population)),by=.(country,age_group)]
-#
-# # Plot
-# ggplot(covy_dt,aes(x=age_group,y=y,group=country,color=country)) + geom_line()
-#
-# # Add symptomatic proportion
-# inc_dt = merge(inc_dt,covy_dt,by=c("country","age_group"),all.x=T)
-
-covy = unname(rep(colMeans(covid_scenario[,..cols4]), each = 2))
+# 
+# # Read in age-dependent symptomatic fraction
+# covid_scenario = qread(datapath("2-linelist_both_fit_fIa0.5-rbzvih.qs"));
+# cols4 = names(covid_scenario)[grep("y_",names(covid_scenario))]
+# # covy = colMeans(covid_scenario[,..cols4])
+# #
+# # min_ages_y = as.integer(sub("y_","",names(covy)))
+# # covy = data.table(age_group=c(paste0(min_ages_y[1:(length(min_ages_y)-1)],"-",min_ages_y[2:length(min_ages_y)]-1),paste0(min_ages_y[length(min_ages_y)],"+")),y=covy)
+# # covy_dt = copy(base_dt)
+# # covy_dt[,age_group:=cut(age,c(min_ages_y,Inf),labels=covy[,age_group],right=F)]
+# # covy_dt = merge(covy_dt,covy,by="age_group",all.x=T)
+# #
+# # # Change age groups
+# # covy_dt[,age_group:=cut(age,c(min_ages,Inf),labels=agegroups,right=F)]
+# # # Calculate population-weighted average symptomatic fraction
+# # covy_dt = covy_dt[,.(y=sum(y*population)/sum(population)),by=.(country,age_group)]
+# #
+# # # Plot
+# # ggplot(covy_dt,aes(x=age_group,y=y,group=country,color=country)) + geom_line()
+# #
+# # # Add symptomatic proportion
+# # inc_dt = merge(inc_dt,covy_dt,by=c("country","age_group"),all.x=T)
+# 
+# covy = unname(rep(colMeans(covid_scenario[,..cols4]), each = 2))
 covy_dt = data.table(age_group_model = agegroups_model,y = covy)
-
+# 
 # # Add symptomatic proportion to incidence data table
 # inc_dt = merge(inc_dt,covy_dt,by="age_group_model")
 # 
@@ -696,9 +713,10 @@ setnames(vax_dt_wide,c("age_group","first_va","first_vb","second_va","second_vb"
 #     geom_line() +
 #     facet_wrap(~variable)
 
-prev_dt = calc_init_condns(inc_dt,vax_dt_wide,agegroups_model,covy,vrnt_prop2,ve_params)
+prev_dt = calc_init_condns(inc_dt,vax_dt_wide,agegroups_model,covy_dt,vrnt_prop2,ve_params,dE,dIp,dIs,dIa)
 
-ggplot(prev_dt[country!="Finland"],aes(x=date,y=nS_E+nV_E+nV_L+nV_R,color=age_group_model)) + geom_line() +
+ggplot(prev_dt[country!="Finland"],aes(x=date,y=nS_E+nV_E+nV_L+nV_R,color=age_group_model)) + 
+    geom_line() +
     facet_wrap(~country)
 
 
@@ -740,10 +758,10 @@ ihr = ihr[,.(ihr=mean(ihr)),by=.(age_group_model)]
 # # Add infection-hospitalisation rate to data table
 # curr_dt = merge(curr_dt,ihr,by="age_group_model")
 # 
-# # Add IFR to data table
-# base_dt = merge(CJ(country=curr_dt[,unique(country)],age=0:100),pop[,.(country,age,population)],by=c("country","age"),all.x=T)
-# ifr_dt = construct_ifr_data_table(ifr,base_dt,min_ages_model,agegroups_model)
-# setnames(ifr_dt,"age_group","age_group_model")
+# Add IFR to data table
+base_dt = merge(CJ(country=curr_dt[,unique(country)],age=0:100),pop[,.(country,age,population)],by=c("country","age"),all.x=T)
+ifr_dt = construct_ifr_data_table(ifr,base_dt,min_ages_model,agegroups_model)
+setnames(ifr_dt,"age_group","age_group_model")
 # curr_dt = merge(curr_dt,ifr_dt,by=c("country","age_group_model"))
 # 
 # # Calculate maximum remaining numbers of symptomatic infections, hospitalisations and deaths for each variant
@@ -824,63 +842,101 @@ ihr = ihr[,.(ihr=mean(ihr)),by=.(age_group_model)]
 # #     facet_wrap(~variable)
 
 
-base_dt = merge(CJ(country=prev_dt[,unique(country)],age=0:100),pop[,.(country,age,population)],by=c("country","age"),all.x=T)
-ifr_dt = construct_ifr_data_table(ifr,base_dt,min_ages_model,agegroups_model)
-setnames(ifr_dt,"age_group","age_group_model")
+# CALCULATIONS ASSUMING CONSTANT INCIDENCE FROM NOW UNTIL ALL SUSCEPTIBLES INFECTED/VACCINATED
+# base_dt = merge(CJ(country=prev_dt[,unique(country)],age=0:100),pop[,.(country,age,population)],by=c("country","age"),all.x=T)
+# ifr_dt = construct_ifr_data_table(ifr,base_dt,min_ages_model,agegroups_model)
+# setnames(ifr_dt,"age_group","age_group_model")
+# 
+# res = calc_rem_burden(prev_dt,agegroups_model,dE,dIp,dIs,dIa,dHosp,dDeath,ihr,ifr_dt)
+# proj_prev_dt = res$proj_prev_dt
+# rem_burden_dt = res$rem_burden_dt
+# 
+# # Plot projected infection incidence (should be constant)
+# ggplot(proj_prev_dt[date<as.Date("2023-01-01") & !(country %in% c("Finland","France","Greece"))],aes(x=date,y=nS_E+nV_E+nV_L+nV_R,color=age_group_model)) +
+#     geom_line() +
+#     facet_wrap(~country)
+# 
+# # Plot maximum remaining hospitalisations and deaths by age
+# ggplot(rem_burden_dt[!(country %in% c("Finland","France","Greece"))],aes(x=cum_inc_hosp*1e5,y=age_group_model)) +
+#     geom_col() +
+#     labs(x="Maximum remaining hospitalisations/100,000 population",y="Age group") +
+#     facet_wrap(~country)
+# ggsave(paste0(dir_out,"rem_hosps_by_age2.pdf"),width = 10,height = 8)
+# 
+# max_dates = prev_dt[,.(date=max(date)),by=.(country)]
+# curr_prev_dt = merge(max_dates,prev_dt,by=c("country","date"))
+# rem_burden_dt = merge(rem_burden_dt,curr_prev_dt[,.(country,date,age_group_model,cum_prop_va,cum_prop_vb)],by=c("country","age_group_model"))
+# 
+# # Plot maximum overall remaining hospitalisations and deaths
+# cols5 = c("cum_hosp","cum_deaths")
+# ovrl_rem_burden_dt = rem_burden_dt[,.(population=sum(population),
+#                           cum_va=sum(cum_prop_va*population),
+#                           cum_vb=sum(cum_prop_vb*population),
+#                           cum_hosp=sum(cum_hosp),
+#                           cum_deaths=sum(cum_deaths)),
+#                        by=.(country,date)]
+# ovrl_rem_burden_dt[,`:=`(cum_prop_va=cum_va/population,
+#                   cum_prop_vb=cum_vb/population)]
+# ovrl_rem_burden_dt[,sub("cum","cum_inc",cols5):=lapply(.SD,function(x) x/population),.SDcols=cols5]
+# ovrl_rem_burden_dt[,cum_prop_v := cum_prop_va+cum_prop_vb]
+# 
+# ggplot(ovrl_rem_burden_dt[!(country %in% c("Finland","France","Greece"))],aes(x=cum_prop_v,y=cum_inc_hosp*1e5)) +
+#     geom_point() +
+#     geom_text(aes(label=country),hjust=-0.1,vjust=0) +
+#     xlim(c(0.1,0.7)) +
+#     labs(x = "Proportion fully vaccinated",y = "Maximum remaining hospitalisations/100,000 population") +
+#     scale_y_log10()
+# ggsave(paste0(dir_out,"rem_hosps_vs_prop_full_vax2.pdf"),width = 10,height = 8)
+# 
+# # Plot vaccination coverage pyramids
+# rem_burden_dt[,cum_prop_v := cum_prop_va+cum_prop_vb]
+# rem_burden_dt[,`:=`(cum_v=cum_prop_v*population,cum_u=(1-cum_prop_v)*population)]
+# rem_burden_dt[,`:=`(pop_prop_v=cum_v/sum(population),pop_prop_u=cum_u/sum(population)),by=.(country)]
+# ggplot(melt(rem_burden_dt[!(country %in% c("Finland","France","Greece"))],measure.vars = c("pop_prop_u","pop_prop_v")),aes(x=value,y=age_group_model,alpha=variable)) +
+#     geom_col(position = "stack") +
+#     scale_alpha_manual(name="",values=c(0.4,1),labels=c("Unvaccinated/\npartially vaccinated","Fully vaccinated")) +
+#     labs(x="Proportion of population",y="Age group") +
+#     facet_wrap(~country)
+# ggsave(paste0(dir_out,"vax_cov_pop_pyramids2.pdf"),width = 10,height = 8)
 
-res = calc_rem_burden(prev_dt,agegroups_model,ihr,ifr_dt,dHosp,dDeath)
-proj_prev_dt = res$proj_prev_dt
-rem_burden_dt = res$rem_burden_dt
+# CALCULATIONS ASSUMING ALL REMAINING SUSCEPTIBLES INFECTED NOW AND CORRESPONDING PROPORTION OF BREAKTHROUGH INFECTIONS AMONG VACCINATED INDIVIDUALS
+curr_dt = calc_rem_burden(prev_dt,ihr,ifr_dt)
 
-# Plot projected infection incidence (should be constant)
-ggplot(proj_prev_dt[date<as.Date("2023-01-01") & !(country %in% c("Finland","France","Greece"))],aes(x=date,y=nS_E+nV_E+nV_L+nV_R,color=age_group_model)) +
-    geom_line() +
+# Plot vaccine coverage pyramids
+curr_dt[,`:=`(cum_v=cum_prop_v*population,cum_u=(1-cum_prop_v)*population)]
+curr_dt[,`:=`(pop_prop_v=cum_v/sum(population),pop_prop_u=cum_u/sum(population)),by=.(country)]
+
+ggplot(melt(curr_dt[country!="Greece"],measure.vars = c("pop_prop_u","pop_prop_v")),aes(x=value,y=age_group_model,alpha=variable)) +
+    geom_col(position = "stack") +
+    scale_alpha_manual(name="",values=c(0.4,1),labels=c("Unvaccinated/\npartially vaccinated","Fully vaccinated")) +
+    labs(x="Proportion of population",y="Age group") +
     facet_wrap(~country)
+ggsave(paste0(dir_out,"vax_cov_pop_pyramids3.pdf"),width = 10,height = 8)
 
-# Plot maximum remaining hospitalisations and deaths by age
-ggplot(rem_burden_dt[!(country %in% c("Finland","France","Greece"))],aes(x=cum_inc_hosp*1e5,y=age_group_model)) +
+# Plot maximum remaining hospitalisations by age
+ggplot(curr_dt[country!="Greece"],aes(x=cum_inc_hosp*1e5,y=age_group_model)) +
     geom_col() +
     labs(x="Maximum remaining hospitalisations/100,000 population",y="Age group") +
     facet_wrap(~country)
-ggsave(paste0(dir_out,"rem_hosps_by_age2.pdf"),width = 10,height = 8)
+ggsave(paste0(dir_out,"rem_hosps_by_age3.pdf"),width = 10,height = 8)
 
-max_dates = prev_dt[,.(date=max(date)),by=.(country)]
-curr_prev_dt = merge(max_dates,prev_dt,by=c("country","date"))
-rem_burden_dt = merge(rem_burden_dt,curr_prev_dt[,.(country,date,age_group_model,cum_prop_va,cum_prop_vb)],by=c("country","age_group_model"))
-
-# Plot maximum overall remaining hospitalisations and deaths
-cols5 = c("cum_hosp","cum_deaths")
-ovrl_rem_burden_dt = rem_burden_dt[,.(population=sum(population),
-                          cum_va=sum(cum_prop_va*population),
-                          cum_vb=sum(cum_prop_vb*population),
-                          cum_hosp=sum(cum_hosp),
-                          cum_deaths=sum(cum_deaths)),
+# Plot maximum overall remaining hospitalisations against vaccine coverage
+ovrl_curr_dt = curr_dt[,.(population=sum(population),
+                          cum_v=sum(cum_prop_v*population,na.rm=T),
+                          cum_hosp=sum(cum_hosp,na.rm=T),
+                          cum_deaths=sum(cum_deaths,na.rm=T)),
                        by=.(country,date)]
-ovrl_rem_burden_dt[,`:=`(cum_prop_va=cum_va/population,
-                  cum_prop_vb=cum_vb/population)]
-ovrl_rem_burden_dt[,sub("cum","cum_inc",cols5):=lapply(.SD,function(x) x/population),.SDcols=cols5]
-ovrl_rem_burden_dt[,cum_prop_v := cum_prop_va+cum_prop_vb]
+ovrl_curr_dt[,cum_prop_v:=cum_v/population]
+cols5 = c("cum_hosp","cum_deaths")
+ovrl_curr_dt[,sub("cum","cum_inc",cols5):=lapply(.SD,function(x) x/population),.SDcols=cols5]
 
-ggplot(ovrl_rem_burden_dt[!(country %in% c("Finland","France","Greece"))],aes(x=cum_prop_v,y=cum_inc_hosp*1e5)) +
+ggplot(ovrl_curr_dt[country!="Greece"],aes(x=cum_prop_v,y=cum_inc_hosp*1e5)) +
     geom_point() +
     geom_text(aes(label=country),hjust=-0.1,vjust=0) +
     xlim(c(0.1,0.7)) +
     labs(x = "Proportion fully vaccinated",y = "Maximum remaining hospitalisations/100,000 population") +
     scale_y_log10()
-ggsave(paste0(dir_out,"rem_hosps_vs_prop_full_vax2.pdf"),width = 10,height = 8)
-
-# Plot vaccination coverage pyramids
-rem_burden_dt[,cum_prop_v := cum_prop_va+cum_prop_vb]
-rem_burden_dt[,`:=`(cum_v=cum_prop_v*population,cum_u=(1-cum_prop_v)*population)]
-rem_burden_dt[,`:=`(pop_prop_v=cum_v/sum(population),pop_prop_u=cum_u/sum(population)),by=.(country)]
-ggplot(melt(rem_burden_dt[!(country %in% c("Finland","France","Greece"))],measure.vars = c("pop_prop_u","pop_prop_v")),aes(x=value,y=age_group_model,alpha=variable)) +
-    geom_col(position = "stack") +
-    scale_alpha_manual(name="",values=c(0.4,1),labels=c("Unvaccinated/\npartially vaccinated","Fully vaccinated")) +
-    labs(x="Proportion of population",y="Age group") +
-    facet_wrap(~country)
-ggsave(paste0(dir_out,"vax_cov_pop_pyramids2.pdf"),width = 10,height = 8)
-
-
+ggsave(paste0(dir_out,"rem_hosps_vs_prop_full_vax3.pdf"),width = 10,height = 8)
 
 # # # Make data tables of rates of waning immunity for different variants and vaccines
 # # wn_dt = data.table(vrnt = inc_dt[,unique(vrnt)], wn = rep(log(0.85)/-182.5,inc_dt[,length(unique(vrnt))]))

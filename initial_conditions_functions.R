@@ -4,9 +4,9 @@ add = function(x,t,n,d){
     return(x)
 }
 
-solve_diff_eqns = function(agegroups_model,exposures,population,nt,q,r,s,nS_V,y){
+solve_diff_eqns = function(exposures,N,nt,q,r,s,nS_V,y,dE,dIp,dIs,dIa){
      
-     na = length(agegroups_model)
+     na = length(N)
      
      S = matrix(nrow = na,ncol = nt+1)
      V = matrix(nrow = na,ncol = nt+1)
@@ -18,7 +18,7 @@ solve_diff_eqns = function(agegroups_model,exposures,population,nt,q,r,s,nS_V,y)
      R = matrix(nrow = na,ncol = nt+1)
      
      # Set initial conditions
-     S[,1] = population
+     S[,1] = N
      V[,1] = rep(0,na)
      E[,1] = rep(0,na)
      L[,1] = rep(0,na)
@@ -96,7 +96,7 @@ solve_diff_eqns = function(agegroups_model,exposures,population,nt,q,r,s,nS_V,y)
                  nL_Ia=nL_Ia,nIp_Is=nIp_Is,nIs_R=nIs_R,nIa_R=nIa_R))
 }
 
-calc_init_condns = function(inc_dt,vax_dt_wide,agegroups_model,covy,vrnt_prop,ve_params){
+calc_init_condns = function(inc_dt,vax_dt_wide,agegroups_model,covy,vrnt_prop,ve_params,dE,dIp,dIs,dIa){
     inc_dt1 = copy(inc_dt)
     
     countries = inc_dt1[,unique(country)]
@@ -135,7 +135,7 @@ calc_init_condns = function(inc_dt,vax_dt_wide,agegroups_model,covy,vrnt_prop,ve
                  et=fifelse(!(prop_va==0 & prop_vb==0),
                             p_va*(prop_vrnt*ve_params$et_va2i+prop_vrnt2*ve_params$et_va2i2+prop_vrnt3*ve_params$et_va2i3)+
                                 p_vb*(prop_vrnt*ve_params$et_vb2i+prop_vrnt2*ve_params$et_vb2i2+prop_vrnt3*ve_params$et_vb2i3),0))]
-    inc_dt1[,`:=`(q=(1-ei)*(1-ed)/(1+et),r=(1-ei)*ed/(1+et),s=(1-ei)*et/(1+et))]
+    inc_dt1[,`:=`(q=(1-ei)*(1-ed)*(1-et),r=(1-ei)*ed*(1-et),s=(1-ei)*et)]
     
     prev_list = vector("list",ncountries)
     for (i in 1:ncountries){
@@ -148,7 +148,7 @@ calc_init_condns = function(inc_dt,vax_dt_wide,agegroups_model,covy,vrnt_prop,ve
         r = as.matrix(dcast(inc_dt1[country==cntry],age_group_model ~ date,value.var = "r")[,-1])
         s = as.matrix(dcast(inc_dt1[country==cntry],age_group_model ~ date,value.var = "s")[,-1])
         
-        Y = solve_diff_eqns(agegroups_model,exposures,population,nt,q,r,s,nS_V,covy)
+        Y = solve_diff_eqns(exposures,population,nt,q,r,s,nS_V,covy,dE,dIp,dIs,dIa)
         
         age_grp = agegroups_model[reshape2::melt(Y[[1]])$Var1]
         dts = inc_dt1[country==cntry,unique(date)][reshape2::melt(Y[[1]])$Var2] 
@@ -173,7 +173,7 @@ rep_last_col = function(x,d){
     x = cbind(x,matrix(x[,ncol(x)],nrow(x),ncol=d))
 }
 
-calc_rem_burden = function(prev_dt,agegroups_model,ihr,ifr_dt,dHosp,dDeath){
+calc_rem_burden = function(prev_dt,agegroups_model,dE,dIp,dIs,dIa,dHosp,dDeath,ihr,ifr_dt){
     max_dates = prev_dt[,.(date=max(date)),by=.(country)]
     
     curr_prev_dt = merge(max_dates,prev_dt,by=c("country","date"))
@@ -209,7 +209,7 @@ calc_rem_burden = function(prev_dt,agegroups_model,ihr,ifr_dt,dHosp,dDeath){
         s = as.matrix(dcast(prev_dt[country==cntry,.(date,age_group_model,s)],age_group_model ~ date,value.var = "s")[,-1])
         s = rep_last_col(s,d)
         
-        Y = solve_diff_eqns(agegroups_model,exposures,population[,population],nt+d,q,r,s,nS_V,covy)
+        Y = solve_diff_eqns(exposures,population[,population],nt+d,q,r,s,nS_V,covy,dE,dIp,dIs,dIa)
         
         indcs = reshape2::melt(Y[[1]])[,c("Var1","Var2")]
         age_grps = agegroups_model[indcs$Var1]
