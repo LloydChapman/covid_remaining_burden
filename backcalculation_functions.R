@@ -1,3 +1,13 @@
+read_death_data = function(source_deaths="coverage"){
+    if (source_deaths=="coverage"){
+        deaths_raw = fread(cmd = "unzip -cq ../coverage_data/Output_10.zip", skip = 3)
+    } else if (source_deaths=="ined"){
+        deaths_raw = fread("../ined_data/AgeSex/Cum_deaths_by_age_sex.csv")
+    } else {
+        stop("Source of age-stratified death data currently unsupported. Please choose 'coverage' or 'ined'.")
+    }
+}
+
 # Functions for getting min and max age from age group string
 get_min_age = function(x) as.numeric(sub("-.*","",sub("\\+|<","-",x)))
 get_max_age = function(x) as.numeric(sub(".*-","",sub("\\+|<","-",x)))
@@ -129,91 +139,187 @@ clean_ined_death_data = function(ined_deaths,who_deaths,cols){
 }
 
 clean_coverage_death_data = function(coverage_deaths,who_deaths,cols){
-    out10 = copy(coverage_deaths)
+    deaths = copy(coverage_deaths)
     
     # Change variable names to lower case
-    names(out10) = tolower(names(out10))
+    names(deaths) = tolower(names(deaths))
     
     # Change country name for US
-    out10[country=="USA",country:="United States"]
+    deaths[country=="USA",country:="United States"]
     
     # Select country-level data
-    out10 = out10[region=="All"]
+    deaths = deaths[region=="All"]
     
     # Rename variables
     cols1 = paste0("cum_",cols)
-    setnames(out10,cols,cols1)
+    setnames(deaths,cols,cols1)
     
     # Convert dates
-    out10[,date:=as.Date(date,format = "%d.%m.%Y")]
+    deaths[,date:=as.Date(date,format = "%d.%m.%Y")]
     
     # Add age group
-    out10[,age_group:=paste0(age,"-",age+ageint-1)]
+    deaths[,age_group:=paste0(age,"-",age+ageint-1)]
     
     # Change sex coding to full words
-    out10[,sex:=fcase(sex=="b","both",
+    deaths[,sex:=fcase(sex=="b","both",
                       sex=="m","male",
                       sex=="f","female")]
     
     # Remove erroneous entries
     # TODO - correct data for Ireland and Scotland
-    out10 = out10[!(country=="Canada" & date==as.Date("2020-04-30"))] # values appear to be incorrect due to missing "TOT" value for 2020-04-30 in inputDB
-    out10 = out10[!(country=="Denmark" & date==as.Date("2021-01-05"))] # values appear to be incorrect (lower than previous date)
-    out10 = out10[!(country=="Denmark" & date == as.Date("2021-06-03"))] # values are doubled for some reason
-    out10 = out10[!(country=="France" & (between(date,as.Date("2020-12-06"),as.Date("2020-12-11"))) | (date %in% as.Date(c("2020-12-03","2021-06-04","2021-06-21"))))] # corrections to published records lead to negative new deaths
-    out10 = out10[!(country=="Greece" & (between(date,as.Date("2021-02-03"),as.Date("2021-02-05")) | (date %in% as.Date(c("2021-03-01")))))]
-    # out10 = out10[!(country=="Ireland" & )]
-    out10 = out10[!(country=="Italy" & (between(date,as.Date("2020-08-11"),as.Date("2020-09-01")) | date %in% as.Date(c("2021-07-15","2021-07-16"))))]
-    out10 = out10[country=="Italy" & date==as.Date("2020-10-20") & age_group=="60-69" & sex=="both",cum_deaths:=3671] # typo in total in inputDB 2671 should be 3671
-    out10 = out10[country=="Italy" & date==as.Date("2020-10-20") & age_group=="60-69" & sex=="male",cum_deaths:=2789] # typo in total in inputDB leads to error in cleaned data
-    out10 = out10[country=="Italy" & date==as.Date("2020-10-20") & age_group=="60-69" & sex=="female",cum_deaths:=882] # typo in total in inputDB leads to error in cleaned data
-    out10 = out10[!(country=="Portugal" & date %in% as.Date(c("2020-10-04","2021-04-24")))] # incorrect all zero or partial zero entries
-    out10 = out10[!(country=="Switzerland" & date==as.Date("2021-05-12"))] # values for 70+ seem to be aggregated
-    # out10 = out10[!(country=="Scotland" & )]
-    out10 = out10[!(country=="Ukraine" & date %in% as.Date(c("2021-05-12","2021-05-13","2021-05-18")))] # missing values for 80+ age groups & lower value for 70-80 age group than previous date
+    deaths = deaths[!(country=="Canada" & date==as.Date("2020-04-30"))] # values appear to be incorrect due to missing "TOT" value for 2020-04-30 in inputDB
+    deaths = deaths[!(country=="Denmark" & date==as.Date("2021-01-05"))] # values appear to be incorrect (lower than previous date)
+    deaths = deaths[!(country=="Denmark" & date == as.Date("2021-06-03"))] # values are doubled for some reason
+    deaths = deaths[!(country=="Finland" & between(date,as.Date("2020-04-10"),as.Date("2020-05-21")))] # aggregated values in raw data for under-60s are split across 10-year age groups
+    deaths = deaths[!(country=="France" & (between(date,as.Date("2020-12-06"),as.Date("2020-12-11"))) | (date %in% as.Date(c("2020-12-03","2021-06-04","2021-06-21"))))] # corrections to published records lead to negative new deaths
+    deaths = deaths[!(country=="Greece" & (between(date,as.Date("2021-02-03"),as.Date("2021-02-05")) | (date %in% as.Date(c("2021-03-01")))))]
+    # deaths = deaths[!(country=="Ireland" & )]
+    deaths = deaths[!(country=="Italy" & (between(date,as.Date("2020-08-11"),as.Date("2020-09-01")) | date %in% as.Date(c("2021-07-15","2021-07-16"))))]
+    deaths = deaths[country=="Italy" & date==as.Date("2020-10-20") & age_group=="60-69" & sex=="both",cum_deaths:=3671] # typo in total in inputDB 2671 should be 3671
+    deaths = deaths[country=="Italy" & date==as.Date("2020-10-20") & age_group=="60-69" & sex=="male",cum_deaths:=2789] # typo in total in inputDB leads to error in cleaned data
+    deaths = deaths[country=="Italy" & date==as.Date("2020-10-20") & age_group=="60-69" & sex=="female",cum_deaths:=882] # typo in total in inputDB leads to error in cleaned data
+    deaths = deaths[!(country=="Portugal" & date %in% as.Date(c("2020-10-04","2021-04-24")))] # incorrect all zero or partial zero entries
+    deaths = deaths[!(country=="Switzerland" & date==as.Date("2021-05-12"))] # values for 70+ seem to be aggregated
+    # deaths = deaths[!(country=="Scotland" & )]
+    deaths = deaths[!(country=="Ukraine" & date %in% as.Date(c("2021-05-12","2021-05-13","2021-05-18")))] # missing values for 80+ age groups & lower value for 70-80 age group than previous date
     
     # Calculate total deaths for merging total death counts from WHO time series
     # N.B. Needs some modification to make it work for multiple variables (cases, deaths, tests)
-    notallNA = apply(out10[,mget(cols1)],1,function(x) !all(is.na(x)))
-    agg_out10 = out10[notallNA,lapply(.SD,sum),.SDcols=cols1,by=.(country,region,code,date,sex)]
+    notallNA = apply(deaths[,mget(cols1)],1,function(x) !all(is.na(x)))
+    agg_out10 = deaths[notallNA,lapply(.SD,sum),.SDcols=cols1,by=.(country,region,code,date,sex)]
     agg_out10[,age_group:="Total"]
-    out10 = rbind(out10[notallNA],agg_out10,fill=T)
+    deaths = rbind(deaths[notallNA],agg_out10,fill=T)
     
-    # notallNA1 = apply(out10[,mget(cols1)],1,function(x) !all(is.na(x)))
-    # min_dates = rbind(out10[notallNA1,.(date=min(date)),by=.(country)],out10[!(country %in% unique(country[notallNA1])),.(date=min(date)),by=.(country)])
-    min_dates = out10[,.(date=min(date)),by=.(country)]
-    countries = out10[,unique(country)]
+    # notallNA1 = apply(deaths[,mget(cols1)],1,function(x) !all(is.na(x)))
+    # min_dates = rbind(deaths[notallNA1,.(date=min(date)),by=.(country)],deaths[!(country %in% unique(country[notallNA1])),.(date=min(date)),by=.(country)])
+    min_dates = deaths[,.(date=min(date)),by=.(country)]
+    countries = deaths[,unique(country)]
     total_deaths_list = vector("list",length(countries))
     cols2 = paste0(sub("tests","tested",cols),"_total")
     cols3 = c("country","date",cols2)
     for (i in 1:length(countries)){
         cntry = countries[i]
         tmp = who_deaths[country==cntry & date<min_dates[country==cntry,date],..cols3]
-        setnames(tmp,cols2,cols1)
-        tmp[,`:=`(region="All",sex="both",age_group="Total")]
         total_deaths_list[[i]] = tmp
     }
     total_deaths = rbindlist(total_deaths_list)
-    out10 = rbind(out10,total_deaths,fill=T)
+    # Add WHO data for time periods for Finland and Italy with missing data
+    tmp = who_deaths[(country=="Finland" & between(date,as.Date("2020-04-10"),as.Date("2020-05-21")))|
+                          (country=="Italy" & between(date,as.Date("2021-01-12"),as.Date("2021-02-24"))),..cols3]
+    total_deaths = rbind(total_deaths,tmp)
+    setnames(total_deaths,cols2,cols1)
+    total_deaths[,`:=`(region="All",sex="both",age_group="Total")]
+    deaths = rbind(deaths,total_deaths,fill=T)
         
     # Cast to wide format for compatibility with construct_data_table function
     if (length(cols1)==1){
-        out10[,sex:=paste0(cols1,"_",sex)]
+        deaths[,sex:=paste0(cols1,"_",sex)]
     }
-    out10 = dcast(out10,country + code + date + age_group ~ sex, value.var = cols1)
+    deaths = dcast(deaths,country + code + date + age_group ~ sex, value.var = cols1)
     
+    # Fill in early deaths for each country by scaling the cumulative number of 
+    # deaths up to the first date with disaggregated age groups for each age 
+    # group by the distribution of the overall number of daily deaths in the WHO
+    # data
     for (i in 1:length(countries)){
         cntry = countries[i]
-        out10 = split_deaths(out10,who_deaths,cntry,who_deaths[country==cntry,min(date)],min_dates[country==cntry,date]-1,Inf,paste0(cols1,"_",c("both","male","female")))
+        deaths = split_deaths(deaths,who_deaths,cntry,who_deaths[country==cntry,min(date)],min_dates[country==cntry,date]-1,Inf,paste0(cols1,"_",c("both","male","female")))
     }
+    # Do the same for periods with missing data for Finland and Italy
+    deaths = split_deaths(deaths,who_deaths,"Finland",as.Date("2020-04-10"),as.Date("2020-05-21"),Inf,paste0(cols1,"_",c("both","male","female")))
+    deaths = split_deaths(deaths,who_deaths,"Italy",as.Date("2021-01-12"),as.Date("2021-02-24"),Inf,paste0(cols1,"_",c("both","male","female")))
     
     # Reorder
-    setorder(out10,country,date,age_group)
+    setorder(deaths,country,date,age_group)
     
     # Drop rows with overall cumulative deaths
-    out10 = out10[age_group!="Total"]
+    deaths = deaths[age_group!="Total"]
     
-    return(out10)
+    return(deaths)
+}
+
+clean_death_data = function(source_deaths,deaths_raw,who_deaths){
+    if (source_deaths=="coverage"){
+        cols = "deaths" # variables to be included in cleaned data
+        deaths = clean_coverage_death_data(deaths_raw,who_deaths,cols)
+    } else if (source_deaths=="ined"){
+        cols = c("cum_deaths_male","cum_deaths_female","cum_deaths_both") # variables to be included in cleaned data
+        deaths = clean_ined_death_data(deaths_raw,who_deaths,cols)
+    } else {
+        stop("Source of age-stratified death data currently unsupported. Please choose 'coverage' or 'ined'.")
+    }
+}
+
+process_variant_data = function(vrnt_data){
+    vrnt_data1 = copy(vrnt_data)
+    
+    # Classify variants into non-Alpha-Delta, Alpha and Delta
+    vrnt_data1[,vrnt:="Other"]
+    vrnt_data1[variant=="B.1.1.7",vrnt:="Alpha"]
+    vrnt_data1[variant=="B.1.617.2",vrnt:="Delta"]
+    
+    # Aggregate data by Alpha/Delta status
+    vrnt_data1 = vrnt_data1[source=="GISAID",.(number_detections_variant=sum(number_detections_variant)),by=.(country,country_code,year_week,date,new_cases,number_sequenced,percent_cases_sequenced,vrnt)]
+    vrnt_data1[,prop_vrnt:=number_detections_variant/number_sequenced]
+    
+    return(vrnt_data1)
+}
+
+plot_variant_data = function(vrnt_data,src){
+    # Plot variant proportions over time
+    p = ggplot(vrnt_data[source==src],aes(x=date,y=percent_variant,group=variant,color=variant)) +
+        geom_line() +
+        labs(title = src) +
+        facet_wrap(~country)
+    return(p)
+}
+
+estimate_variant_proportions = function(vrnt_data){
+    # Fit multinomial logistic model to estimate variant proportions over time
+    # Cast to wide format
+    vrnt_data_wide = dcast(vrnt_data,country + date ~ vrnt,value.var = "number_detections_variant")
+    # Exclude rows without any observations
+    vrnt_data_wide = vrnt_data_wide[!(Alpha==0 & Delta==0 & Other==0)]
+    
+    countries = vrnt_data_wide[,unique(country)]
+    ncountries = length(countries)
+    m1 = vector("list",ncountries)
+    m2 = vector("list",ncountries)
+    for (i in 1:ncountries){
+        cntry = countries[i]
+        m1[[i]] = multinom(as.matrix(vrnt_data_wide[country==cntry,.(Other,Alpha,Delta)]) ~ date,vrnt_data_wide[country==cntry])
+        m2[[i]] = multinom(as.matrix(vrnt_data_wide[country==cntry,.(Other,Alpha,Delta)]) ~ ns(date,df=2),vrnt_data_wide[country==cntry])
+    }
+    
+    # Compare AIC and BIC for fitted models
+    AIC_BIC = data.table(model=c("m1","m2"),
+                         AIC=c(sum(sapply(m1,AIC)),sum(sapply(m2,AIC))),
+                         BIC=c(sum(sapply(m1,BIC)),sum(sapply(m2,BIC))))
+    print(AIC_BIC)
+    #    model      AIC      BIC
+    # 1:    m1 711620.8 712474.5
+    # 2:    m2 667952.1 669232.7
+    # Use model m2 as it has lower AIC and BIC
+    
+    vrnt_prop1 = vector("list",ncountries)
+    vrnt_prop2 = vector("list",ncountries)
+    new_dt = data.table(date=seq.Date(vrnt_data_wide[,min(date)],vrnt_data_wide[,max(date)],by=1)) #data.table(date = seq.Date(vrnt_data_wide[,min(date)],dates2[length(dates2)],by=1))
+    for (i in 1:ncountries){
+        cntry = countries[i]
+        # new_dt = data.table(date=seq.Date(vrnt_data_wide[country==cntry,min(date)],vrnt_data_wide[country==cntry,max(date)],by=1))
+        vrnt_prop1[[i]] = data.table(new_dt,predict(m1[[i]],newdata = new_dt,type = "probs"))
+        vrnt_prop1[[i]][,country:=cntry]
+        vrnt_prop2[[i]] = data.table(new_dt,predict(m2[[i]],newdata = new_dt,type = "probs"))
+        vrnt_prop2[[i]][,country:=cntry]
+    }
+    vrnt_prop1 = rbindlist(vrnt_prop1)
+    vrnt_prop2 = rbindlist(vrnt_prop2)
+    vrnt_prop1 = melt(vrnt_prop1,id.vars = c("country","date"),variable.name = "vrnt",value.name = "prop_vrnt")
+    vrnt_prop2 = melt(vrnt_prop2,id.vars = c("country","date"),variable.name = "vrnt",value.name = "prop_vrnt")
+    
+    return(list(vrnt_prop1=vrnt_prop1,vrnt_prop2=vrnt_prop2))
+    # TODO - work out how to calculate CIs with effects package. Might need to
+    # reformat input data to get it to work
 }
 
 clean_ecdc_vaccination_data = function(ecdc_vax,country_iso_codes){
@@ -303,7 +409,32 @@ clean_ecdc_vaccination_data = function(ecdc_vax,country_iso_codes){
     return(vax)
 }
 
-construct_vax_data_table = function(vax,dates,agegroups){
+process_PHE_vaccination_data = function(vaccPHE){
+    vaxENG = vector("list",length(vaccPHE))
+    for (i in 1:length(vaxENG)){
+        vaxENG[[i]] = data.table(date=rep(vaccPHE[[i]]$vt,each=length(agegroups_model)),
+                                 age_group=rep(agegroups_model,length(vaccPHE[[i]]$vt)),
+                                 va1=unlist(vaccPHE[[i]]$va1),
+                                 va2=unlist(vaccPHE[[i]]$va2),
+                                 vb1=unlist(vaccPHE[[i]]$vb1),
+                                 vb2=unlist(vaccPHE[[i]]$vb2),
+                                 pop=i)
+    }
+    vaxENG = rbindlist(vaxENG,fill=T)
+    vaxENG = vaxENG[,lapply(.SD,sum),.SDcols=c("va1","va2","vb1","vb2"),by=.(date,age_group)]
+    vaxENG[,`:=`(country="England",year_week_iso=date2ISOweek(date))]
+    vaxENG_long = melt(vaxENG,measure.vars = c("va1","va2","vb1","vb2"),variable.name = "type")
+    vaxENG_long[,`:=`(type=substr(type,1,2),dose=substr(type,3,3))]
+    vaxENG_long[,dose:=fifelse(dose==1,"first","second")]
+    vaxENG = dcast(vaxENG_long,country+year_week_iso+date+age_group+type ~ dose)
+    
+    # # Plot cumulative number vaccinated to check
+    # ggplot(vaxENG[type=="va",.(date,second=cumsum(second)),by=.(age_group)],aes(x=date,y=second,color=age_group)) + geom_line()
+    # ggplot(vaxENG[type=="vb",.(date,second=cumsum(second)),by=.(age_group)],aes(x=date,y=second,color=age_group)) + geom_line()
+    
+}
+
+construct_vax_data_table = function(vax,dates,agegroups,pop){
     # Get vaccination age groups from vax
     agegroups_vax = sort(vax[,unique(age_group)])
     agegroups_vax = agegroups_vax[agegroups_vax!="UNK"]
@@ -324,10 +455,15 @@ construct_vax_data_table = function(vax,dates,agegroups){
     # N.B. This duplicates numbers of doses for the same ISO week and age group, so 
     # we then divide by 7 to get the average doses per day and divide doses between 
     # age groups according to population fraction
-    vax_dt = merge(vax_dt,vax[,!"date"],by=c("country","year_week_iso","age_group","type"),all.x=T)
     cols = c("first","second")
-    vax_dt[,(cols):=lapply(.SD,as.numeric),.SDcols=cols]
-    vax_dt[,(cols):=lapply(.SD,function(x) x/7),.SDcols=cols]
+    if (vax[,length(unique(country))]==1 && vax[,unique(country)]=="England"){
+        vax_dt = merge(vax_dt,vax[,!"year_week_iso"],by=c("country","date","age_group","type"),all.x=T)
+        vax_dt[,(cols):=lapply(.SD,as.numeric),.SDcols=cols]
+    } else {
+        vax_dt = merge(vax_dt,vax[,!"date"],by=c("country","year_week_iso","age_group","type"),all.x=T)
+        vax_dt[,(cols):=lapply(.SD,as.numeric),.SDcols=cols]
+        vax_dt[,(cols):=lapply(.SD,function(x) x/7),.SDcols=cols]
+    }
     vax_dt[,(cols):=lapply(.SD,function(x) x*population/sum(population)),.SDcols=cols,by=.(country,date,age_group,type)]
     print(vax_dt[,sum(first+second,na.rm=T)]) #209476181
     
@@ -405,7 +541,7 @@ construct_ifr_data_table = function(ifr,base_dt,min_ages,agegroups){
 }
 
 # construct_data_table = function(agegroups,deaths,pop,cols,ltc_deaths,vax,num_type,ifr){
-construct_data_table = function(agegroups,deaths,pop,cols,ltc_deaths,vax,Ab_delay,ifr,vrnt_prop,ve_params){
+construct_data_table = function(agegroups,deaths,pop,cols,ltc_deaths,vax,Ab_delay,vaxENG,ifr,vrnt_prop,ve_params){
     # Get minimum ages of age groups
     min_ages = get_min_age(agegroups)
     max_ages = get_max_age(agegroups)
@@ -529,10 +665,25 @@ construct_data_table = function(agegroups,deaths,pop,cols,ltc_deaths,vax,Ab_dela
     # Merge with deaths data table
     deaths_dt = merge(deaths_dt,ltc_deaths[,.(country,prop_ltc_res_deaths,prop_ltc_deaths)],by="country")
     
-    # Calculate LTC deaths among those 60+ by multiplying total deaths by LTC proportion
-    # N.B. relies on having proportion of deaths in LTCs or LTC residents
+    # Calculate proportion of deaths among those 60+
+    # Exclude France as deaths time series is for hospital deaths only
+    deaths_dt[country!="France",prop_60plus := sum(deaths_i_both[age_group %in% agegroups[max_ages>60]])/sum(deaths_i_both),by=.(country)]
+    # Calculate proportion of deaths among those 60+ in France from non-LTC deaths and proportion of deaths in LTCs
+    # N.B. This overestimates total deaths in France by ~10,000 as the proportion of deaths in LTCs has decreased over time
+    # TODO - make proportion of deaths in LTCs time dependent e.g. using INED data
+    deaths_dt[country=="France",prop_60plus := prop_ltc_deaths + (1-prop_ltc_deaths)*sum(deaths_i_both[age_group %in% agegroups[max_ages>60]])/sum(deaths_i_both)]
+    
+    # Calculate LTC deaths among 60+ year-olds by:
+    # 1. assuming all LTC deaths occur among those 60+
+    # 2. dividing deaths among 60+ by proportion of total deaths among 60+ (to get total deaths), and 
+    # 3. multiplying by proportion of total deaths that have occurred among LTC residents
+    # (N.B. relies on having proportion of deaths in LTCs or LTC residents)
+    # TODO - rethink/modify this calculation for non-European countries w/o care homes
     deaths_dt[age_group %in% agegroups[max_ages<60],deaths_i_both_ltc := 0] # assume no deaths in under-60s
-    deaths_dt[age_group %in% agegroups[max_ages>60],deaths_i_both_ltc := deaths_i_both * fifelse(!is.na(prop_ltc_res_deaths),prop_ltc_res_deaths,prop_ltc_deaths)]
+    # Calculate deaths among those 60+ for France by scaling up hospital (non-LTC) deaths
+    deaths_dt[country=="France" & age_group %in% agegroups[max_ages>60],deaths_i_both := deaths_i_both/(1-prop_ltc_deaths/prop_60plus)]
+    deaths_dt[age_group %in% agegroups[max_ages>60],deaths_i_both_ltc := deaths_i_both * fifelse(!is.na(prop_ltc_res_deaths),prop_ltc_res_deaths,prop_ltc_deaths)/prop_60plus]
+    # Calculate non-LTC deaths
     deaths_dt[,deaths_i_both_non_ltc := deaths_i_both - deaths_i_both_ltc]
     
     # VACCINATION DATA
@@ -583,7 +734,13 @@ construct_data_table = function(agegroups,deaths,pop,cols,ltc_deaths,vax,Ab_dela
     # vax_dt[,cum_prop:=cumsum(prop),by=.(country,age_group,type)]
     
     # Construct vaccination data table
-    vax_dt = construct_vax_data_table(vax,dates1,agegroups)
+    vax_dt = construct_vax_data_table(vax,dates1,agegroups,pop)
+    
+    # Construct vaccination data table for England
+    vaxENG_dt = construct_vax_data_table(vaxENG,dates1,agegroups,pop)
+    
+    # Bind together
+    vax_dt = rbind(vax_dt,vaxENG_dt)
     
     # Plot data
     # cumulative proportion fully vaccinated
@@ -699,7 +856,7 @@ construct_data_table = function(agegroups,deaths,pop,cols,ltc_deaths,vax,Ab_dela
     # Calculate IFR over time
     # dt[,ifr_t := ifr]
     dt[,cum_prop_v:=cum_prop_va+cum_prop_vb]
-    dt[,ifr_t:=((1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v))*ifr+cum_prop_v/(1-ei*cum_prop_v)*(1-ei)*(1-ed)*(1-et)*ifr_v)]
+    dt[,ifr_t:=((1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v))*ifr+cum_prop_v/(1-ei*cum_prop_v)*(1-ei)*(1-ed)*ifr_v)]
     # dt[,ifr_t := (1-cum_prop_va-cum_prop_vb)*ifr + cum_prop_va*ifr_va + cum_prop_vb*ifr_vb]
     # dt[,ifr_t := (1-cum_prop_va-cum_prop_vb)*(prop_vrnt+prop_vrnt2+prop_vrnt3)*ifr + 
     #        cum_prop_va*ifr_va + 
@@ -781,7 +938,7 @@ deconv = function(dt,idd_pmf,method = "ride"){
         # for (i in 1:length(dt_list)){
         exposures_dead_list = foreach(i=1:length(dt_list)) %dopar% {
             # TODO - check if delay distribution is only defined from day 1 onwards in incidental
-            exposures_model = fit_incidence(dt_list[[i]][,as.integer(round(deaths_i_both))],idd_pmf[2:length(idd_pmf)]/sum(idd_pmf[2:length(idd_pmf)]))
+            exposures_model = fit_incidence(dt_list[[i]][,as.integer(round(deaths_i_both))],idd_pmf[2:length(idd_pmf)]/sum(idd_pmf[2:length(idd_pmf)]),linear_tail = 28,extrapolation_prior_precision = 100)
             
             list(exposures_model$Ihat,exposures_model$Isamps)
             # exposures_dead_list[[i]] = list(exposures_model$Ihat,exposures_model$Isamps)
@@ -862,6 +1019,41 @@ backcalc = function(dt,idd_pmf,ip_pmf,method = "ride"){
     return(list(backcalc_dt,backcalc_samps))
 }
 
+run_backcalculation = function(dt,dDeath,dIncub,method = "ride"){
+    # Extract non-LTC and LTC data
+    dt_non_ltc = dt[,.(country,age_group,date,deaths_i_both=deaths_i_both_non_ltc,ifr_t)]
+    dt_ltc = dt[get_min_age(age_group)>=60,.(country,age_group,date,deaths_i_both=deaths_i_both_ltc,ifr_t=frlty_idx*ifr_t)]
+    
+    tstart = Sys.time()
+    # non-LTC
+    out = backcalc(dt_non_ltc,dDeath,dIncub,method = method)
+    backcalc_dt_non_ltc = out[[1]]
+    backcalc_samps_non_ltc = out[[2]]
+    # LTC
+    out = backcalc(dt_ltc,dDeath,dIncub,method = method)
+    backcalc_dt_ltc = out[[1]]
+    backcalc_samps_ltc = out[[2]]
+    tend = Sys.time()
+    print(tend-tstart)
+    
+    # Merge non-LTC and LTC estimates
+    backcalc_dt = merge(backcalc_dt_non_ltc,backcalc_dt_ltc,by=c("country","age_group","date"),all.x=T,suffixes=c("_non_ltc","_ltc"))
+    setnafill(backcalc_dt,fill=0,cols=c("deaths_i_both_ltc","exposures_dead_ltc","exposures_ltc","infections_ltc"))
+    backcalc_dt[,`:=`(deaths_i_both=deaths_i_both_non_ltc+deaths_i_both_ltc,
+                  exposures_dead=exposures_dead_non_ltc+exposures_dead_ltc,
+                  exposures=exposures_non_ltc+exposures_ltc,
+                  infections=infections_non_ltc+infections_ltc)]
+    backcalc_dt = merge(backcalc_dt,unique(dt[,.(country,age_group,population)]),by=c("country","age_group"),all.x=T)
+    # backcalc_samps = mapply("+",backcalc_samps_non_ltc,backcalc_samps_ltc)
+    
+    # Calculate cumulative infections
+    backcalc_dt = calc_cum_exposures_and_infections(backcalc_dt)
+    
+    return(list(backcalc_dt=backcalc_dt,#backcalc_samps=backcalc_samps,
+                backcalc_dt_non_ltc=backcalc_dt_non_ltc,backcalc_samps_non_ltc=backcalc_samps_non_ltc,
+                backcalc_dt_ltc=backcalc_dt_ltc,backcalc_samps_ltc=backcalc_samps_ltc))
+}
+
 plot_infections = function(dt){
     # plot inferred exposures and infections
     p = ggplot(dt,aes(x=date,group=age_group,color=age_group)) + 
@@ -880,6 +1072,113 @@ plot_deaths = function(dt){
         facet_wrap(~country)
     
     return(p)
+}
+
+process_seroprevalence_data = function(sero_data){
+    # sero_data[,country_code:=dt[match(sero_data[,Country],country),country_code]]
+    # Filter to only include national and regional surveys with household and community and residual sera samples
+    sero_data = sero_data[`Grade of Estimate Scope` %in% c("National","Regional") &
+                              `Sample Frame (groups of interest)` %in% c("Household and community samples","Residual sera"),
+                          .(#country_code,
+                              scope=`Grade of Estimate Scope`,
+                              country=Country,
+                              region=`Specific Geography`,
+                              Start.date=dmy(`Sampling Start Date`),
+                              End.date=dmy(`Sampling End Date`),
+                              sample_frame=`Sample Frame (groups of interest)`,
+                              Central.estimate=`Serum positive prevalence`,
+                              Lower.bound=`Serum pos prevalence, 95pct CI Lower`,
+                              Upper.bound=`Serum pos prevalence, 95pct CI Upper`,
+                              Test=`Test Type`,
+                              Institution=`Lead Institution`,
+                              Data.source=URL,
+                              N.tests=`Denominator Value`
+                          )]
+    # Remove social housing serosurvey data for Denmark and early regional estimates for Italy
+    sero_data = sero_data[!((country=="Denmark" & Central.estimate=="17.30%")|(country=="Italy" & Start.date<=as.Date("2020-05-05")))]
+    sero_data[,date := Start.date + (End.date - Start.date)/2]
+    
+    return(sero_data)
+}
+
+pct = function(x) as.numeric(str_replace_all(x, "%", "")) / 100
+
+plot_output = function(fnm){
+    load(fnm)
+    p_non_ltc = plot_infections(backcalc_dt_non_ltc)
+    ggsave(paste0(dir_out,"infections_by_age_non_ltc_",method,"_",source_deaths,".pdf"),plot=p_non_ltc,width = 10,height = 8)
+    p_ltc = plot_infections(backcalc_dt_ltc)
+    ggsave(paste0(dir_out,"infections_by_age_ltc_",method,"_",source_deaths,".pdf"),plot=p_ltc,width = 10,height = 8)
+    p = plot_infections(backcalc_dt)
+    ggsave(paste0(dir_out,"infections_by_age_",method,"_",source_deaths,".pdf"),plot=p,width = 10,height = 8)
+    
+    # Compare with ECDC age-stratified case data
+    ecdc_cases_by_age = fread("../ecdc_data/ecdc_case_data_by_age.csv")
+    # Should be end of ISO week - TODO correct in vaccination data!
+    ecdc_cases_by_age[,date:=ISOweek2date(paste0(sub("-","-W",year_week),"-7"))]
+    ecdc_cases_by_age[age_group=="<15yr",age_group:="0-14yr"]
+    ggplot(ecdc_cases_by_age[country %in% dt[,unique(country)]],aes(x=date,y=new_cases,group=age_group,color=age_group)) +
+        geom_line() +
+        facet_wrap(~country)
+    ggsave(paste0(dir_out,"ecdc_cases_by_age.pdf"),width = 10,height = 8)
+    ggplot(ecdc_cases_by_age[country_code %in% c("DK","NO")],aes(x=date,y=new_cases,group=age_group,color=age_group)) +
+        geom_line() +
+        facet_wrap(~country)
+    ggsave(paste0(dir_out,"ecdc_cases_by_age_DNK_NOR.pdf"),width = 6,height = 3)
+    
+    # Plot estimated infections vs reported cases
+    # overall
+    ggplot() +
+        geom_line(aes(x=date,y=infections),backcalc_dt[,.(infections=sum(infections)),by=.(country,date)]) +
+        geom_line(aes(x=date,y=new_cases/7),ecdc_cases_by_age[country %in% backcalc_dt[,unique(country)],.(new_cases=sum(new_cases)),by=.(country,date)],linetype="dashed") +
+        facet_wrap(~country) + ylim(c(0,6e4))
+    ggsave(paste0(dir_out,"infections_vs_obs_cases_",method,"_",source_deaths,".pdf"),width = 10,height = 8)
+    
+    # by age
+    agegroups_comp = c("0-49","50-79","80+")
+    min_ages_comp = get_min_age(agegroups_comp)
+    backcalc_dt[,age_group_comp:=cut(get_min_age(age_group),c(min_ages_comp,Inf),labels=agegroups_comp,right=F)]
+    ecdc_cases_by_age[,age_group_comp:=cut(get_min_age(age_group),c(min_ages_comp,Inf),labels=agegroups_comp,right=F)]
+    ggplot() +
+        geom_line(aes(x=date,y=infections,group=age_group_comp,color=age_group_comp),backcalc_dt[,.(infections=sum(infections)),by=.(country,date,age_group_comp)]) +
+        geom_line(aes(x=date,y=new_cases/7,group=age_group_comp,color=age_group_comp),ecdc_cases_by_age[country %in% backcalc_dt[,unique(country)],.(new_cases=sum(new_cases)),by=.(country,date,age_group_comp)],linetype="dashed") +
+        facet_wrap(~country) +  ylim(c(0,5e4))
+    ggsave(paste0(dir_out,"infections_vs_obs_cases_by_age_",method,"_",source_deaths,".pdf"),width = 10,height = 8)
+    
+    # Denmark and Norway
+    ggplot() +
+        geom_line(aes(x=date,y=infections,group=age_group_comp,color=age_group_comp),backcalc_dt[country %in% c("Denmark","Norway"),.(infections=sum(infections)),by=.(country,date,age_group_comp)]) +
+        geom_line(aes(x=date,y=new_cases/7,group=age_group_comp,color=age_group_comp),ecdc_cases_by_age[country %in% c("Denmark","Norway"),.(new_cases=sum(new_cases)),by=.(country,date,age_group_comp)],linetype="dashed") +
+        facet_wrap(~country)
+    ggsave(paste0(dir_out,"infections_vs_obs_cases_by_age_",method,"_",source_deaths,"_DNK_NOR.pdf"),width = 6,height = 3)
+    
+    # Compare with SeroTracker seroprevalence data
+    serotracker_data = fread("../serotracker_data/SeroTracker Serosurveys Reporting Prevalence.csv")
+    sero_data = process_seroprevalence_data(serotracker_data)
+
+    # Plot cumulative proportion infected vs seroprevalence
+    ggplot() +
+        geom_line(aes(x=date,y=cum_prop_inf,group=age_group,color=age_group),backcalc_dt) +
+        geom_point(aes(x=date,y=pct(Central.estimate),shape=scope),sero_data[country %in% backcalc_dt[,unique(country)]]) +
+        facet_wrap(~country) + ylim(c(0,1))
+    ggsave(paste0(dir_out,"cum_prop_infected_vs_seroprev_",source_deaths,".pdf"),width = 10,height = 8)
+        
+    # Plot cumulative proportion infected or vaccinated vs seroprevalence
+    ggplot() +
+        geom_line(aes(x=date,y=cum_prop_inf+cum_prop_v,group=age_group,color=age_group),
+                  merge(backcalc_dt,dt[,.(country,date,age_group,cum_prop_v)],by=c("country","date","age_group"))) +
+        geom_point(aes(x=date,y=pct(Central.estimate),shape=scope),sero_data[country %in% backcalc_dt[,unique(country)]]) +
+        facet_wrap(~country) + ylim(c(0,1))
+    ggsave(paste0(dir_out,"cum_prop_infected_or_vaccinated_vs_seroprev_",source_deaths,".pdf"),width = 10,height = 8)
+    
+    p_deaths = plot_deaths(dt)
+    ggsave(paste0(dir_out,"deaths_by_age_",source_deaths,".pdf"),plot = p_deaths,width = 10,height = 8)
+    
+    ggplot(dt,aes(x=date,y=cum_prop_v,group=age_group,color=age_group)) +
+        geom_line() +
+        facet_wrap(~country)
+    ggsave(paste0(dir_out,"vax_cov_by_age.pdf"),width = 10,height = 8)
+    
 }
 
 # calc_init_condns = function(inc_dt,vax_dt_wide){
@@ -986,7 +1285,7 @@ calc_init_condns = function(inc_dt,vax_dt_wide,agegroups_model,covy_dt,vrnt_prop
                                  p_vb*(prop_vrnt*ve_params$et_vb2i+prop_vrnt2*ve_params$et_vb2i2+prop_vrnt3*ve_params$et_vb2i3),0))]
     
     # TODO - THIS LINE NEEDS CORRECTING ONCE ISSUE WITH et AND ed VALUES IS RESOLVED
-    prev_dt[,`:=`(q=(1-ei)*(1-ed)*(1-et),r=(1-ei)*ed*(1-et),s=(1-ei)*et)]
+    prev_dt[,`:=`(q=(1-ei)*(1-ed),r=(1-ei)*ed)]
     # prev_dt[,`:=`(q=(1-ei)*(1-ed),r=(1-ei)*(ed-et),s=(1-ei)*et)]
     
     # Calculate cumulative proportion vaccinated with either type A or type B vaccine
@@ -998,12 +1297,15 @@ calc_init_condns = function(inc_dt,vax_dt_wide,agegroups_model,covy_dt,vrnt_prop
     
     # Calculate numbers of susceptibles and vaccinated individuals infected
     prev_dt[,`:=`(nS_E=(1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v))*exposures,
-                  nV_E=(1-ei)*(1-ed)*(1-et)*cum_prop_v/(1-ei*cum_prop_v)*exposures,
-                  nV_L=(1-ei)*ed*(1-et)*cum_prop_v/(1-ei*cum_prop_v)*exposures,
-                  nV_R=(1-ei)*et*cum_prop_v/(1-ei*cum_prop_v)*exposures)]
+                  nV_E=(1-ei)*(1-ed)*cum_prop_v/(1-ei*cum_prop_v)*exposures,
+                  nV_L=(1-ei)*ed*cum_prop_v/(1-ei*cum_prop_v)*exposures)]
+    # prev_dt[,`:=`(nS_E=(1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v))*exposures,
+    #               nV_E=(1-ei)*(1-ed)*cum_prop_v/(1-ei*cum_prop_v)*exposures,
+    #               nV_L=(1-ei)*(ed-et)*cum_prop_v/(1-ei*cum_prop_v)*exposures,
+    #               nV_R=(1-ei)*et*cum_prop_v/(1-ei*cum_prop_v)*exposures)]
     
     # Merge with age-dependent symptomatic fraction
-    prev_dt = merge(prev_dt,covy_dt,by="age_group_model")
+    prev_dt = merge(prev_dt,covy_dt,by=c("country","age_group_model"))
     
     # Calculate number leaving susceptible compartment at each time point
     prev_dt[,diffS:=-nS_E-nS_V]
@@ -1013,7 +1315,7 @@ calc_init_condns = function(inc_dt,vax_dt_wide,agegroups_model,covy_dt,vrnt_prop
     prev_dt[,S:=pmax(population+cumsum(diffS),0),by=.(country,age_group_model)]
     
     # Where susceptibles are fully depleted, set exposures and vaccinations among susceptibles to 0
-    print(prev_dt[S==0 & country!="Finland",.(nS_E=sum(nS_E)),by=.(country)])
+    print(prev_dt[S==0,.(nS_E=sum(nS_E)),by=.(country)])
     prev_dt[S==0,`:=`(nS_E=0,nS_V=0)]
     
     # Convolve exposures with latent period distribution to get infections
@@ -1030,13 +1332,13 @@ calc_init_condns = function(inc_dt,vax_dt_wide,agegroups_model,covy_dt,vrnt_prop
     
     # Calculate differences in numbers entering and leaving compartments at each
     # time point
-    prev_dt[,`:=`(diffV=nS_V-nV_E-nV_L-nV_R,
+    prev_dt[,`:=`(diffV=nS_V-nV_E-nV_L,#-nV_R,
                   diffE=nS_E+nV_E-nE_I,
                   diffL=nV_L-nL_Ia,
                   diffIp=nE_Ip-nIp_Is,
                   diffIs=nIp_Is-nIs_R,
                   diffIa=nE_Ia+nL_Ia-nIa_R,
-                  diffR=nIs_R+nIa_R+nV_R)]
+                  diffR=nIs_R+nIa_R)]#+nV_R)]
     
     # Calculate numbers in each compartment at each time point
     cols1 = c("V","E","L","Ip","Is","Ia","R")
@@ -1048,7 +1350,7 @@ calc_init_condns = function(inc_dt,vax_dt_wide,agegroups_model,covy_dt,vrnt_prop
     prev_dt[,(c("prevS",paste0("prev",cols1))):=lapply(.SD,function(x) x/population),.SDcols=c("S",cols1)]
     
     # Plot to check
-    ggplot(prev_dt[country!="Finland"],aes(x=date,y=prevS,color=age_group_model)) +
+    ggplot(prev_dt,aes(x=date,y=prevS,color=age_group_model)) +
         geom_line() +
         facet_wrap(~country)
     
