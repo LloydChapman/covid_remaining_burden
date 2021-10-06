@@ -265,6 +265,22 @@ process_variant_data = function(vrnt_data){
     return(vrnt_data1)
 }
 
+process_cog_variant_data = function(cog_vrnt_data){
+    cog_vrnt_data1 = copy(cog_vrnt_data)
+    cog_vrnt_data1[,vrnt:="Other"]
+    cog_vrnt_data1[Lineage=="B.1.1.7",vrnt:="Alpha"]
+    cog_vrnt_data1[Lineage %in% c("B.1.617.2","AY.4","AY.5","AY.6","AY.9"),vrnt:="Delta"]
+    # Exclude sequences with unknown lineage from 2021-08-14 counts, as number is very high
+    cog_vrnt_data1 = cog_vrnt_data1[!(WeekEndDate==as.Date("2021-08-14") & Lineage=="None")]
+    vrnt_dataENG = CJ(date = cog_vrnt_data1[,unique(WeekEndDate)], vrnt = cog_vrnt_data1[,unique(vrnt)])
+    vrnt_dataENG = merge(vrnt_dataENG,cog_vrnt_data1[,.(number_detections_variant=sum(Count)),by=.(date=WeekEndDate,vrnt)],all.x=T)
+    vrnt_dataENG[is.na(number_detections_variant),number_detections_variant:=0]
+    vrnt_dataENG[,prop_vrnt:=number_detections_variant/sum(number_detections_variant),by=.(date)]
+    vrnt_dataENG[,country:="England"]
+    
+    return(vrnt_dataENG)
+}
+
 plot_variant_data = function(vrnt_data,src){
     # Plot variant proportions over time
     p = ggplot(vrnt_data[source==src],aes(x=date,y=percent_variant,group=variant,color=variant)) +
@@ -409,7 +425,7 @@ clean_ecdc_vaccination_data = function(ecdc_vax,country_iso_codes){
     return(vax)
 }
 
-process_PHE_vaccination_data = function(vaccPHE){
+process_phe_vaccination_data = function(vaccPHE){
     vaxENG = vector("list",length(vaccPHE))
     for (i in 1:length(vaxENG)){
         vaxENG[[i]] = data.table(date=rep(vaccPHE[[i]]$vt,each=length(agegroups_model)),
@@ -865,7 +881,7 @@ construct_data_table = function(agegroups,deaths,pop,cols,ltc_deaths,vax,Ab_dela
     # Plot population-weighted average IFR over time for all countries
     print(ggplot(dt[,.(ifr_t=sum(ifr_t*population)/sum(population)),by=.(country,date)],
            aes(x=date,y=ifr_t,group=country,color=country)) + geom_line())
-    # ggsave("./output/avg_ifr_over_time.pdf",width = 5,height = 4)
+    # ggsave("./output/avg_ifr_over_time.png",width = 5,height = 4)
     
     return(dt)
 }
@@ -1096,6 +1112,8 @@ process_seroprevalence_data = function(sero_data){
                           )]
     # Remove social housing serosurvey data for Denmark and early regional estimates for Italy
     sero_data = sero_data[!((country=="Denmark" & Central.estimate=="17.30%")|(country=="Italy" & Start.date<=as.Date("2020-05-05")))]
+    # Change country name for surveys in England so that England data is plotted
+    sero_data[region=="The United Kingdom; England",country:="England"]
     sero_data[,date := Start.date + (End.date - Start.date)/2]
     
     return(sero_data)
@@ -1106,11 +1124,11 @@ pct = function(x) as.numeric(str_replace_all(x, "%", "")) / 100
 plot_output = function(fnm){
     load(fnm)
     p_non_ltc = plot_infections(backcalc_dt_non_ltc)
-    ggsave(paste0(dir_out,"infections_by_age_non_ltc_",method,"_",source_deaths,".pdf"),plot=p_non_ltc,width = 10,height = 8)
+    ggsave(paste0(dir_out,"infections_by_age_non_ltc_",method,"_",source_deaths,".png"),plot=p_non_ltc,width = 10,height = 8)
     p_ltc = plot_infections(backcalc_dt_ltc)
-    ggsave(paste0(dir_out,"infections_by_age_ltc_",method,"_",source_deaths,".pdf"),plot=p_ltc,width = 10,height = 8)
+    ggsave(paste0(dir_out,"infections_by_age_ltc_",method,"_",source_deaths,".png"),plot=p_ltc,width = 10,height = 8)
     p = plot_infections(backcalc_dt)
-    ggsave(paste0(dir_out,"infections_by_age_",method,"_",source_deaths,".pdf"),plot=p,width = 10,height = 8)
+    ggsave(paste0(dir_out,"infections_by_age_",method,"_",source_deaths,".png"),plot=p,width = 10,height = 8)
     
     # Compare with ECDC age-stratified case data
     ecdc_cases_by_age = fread("../ecdc_data/ecdc_case_data_by_age.csv")
@@ -1120,19 +1138,19 @@ plot_output = function(fnm){
     ggplot(ecdc_cases_by_age[country %in% dt[,unique(country)]],aes(x=date,y=new_cases,group=age_group,color=age_group)) +
         geom_line() +
         facet_wrap(~country)
-    ggsave(paste0(dir_out,"ecdc_cases_by_age.pdf"),width = 10,height = 8)
+    ggsave(paste0(dir_out,"ecdc_cases_by_age.png"),width = 10,height = 8)
     ggplot(ecdc_cases_by_age[country_code %in% c("DK","NO")],aes(x=date,y=new_cases,group=age_group,color=age_group)) +
         geom_line() +
         facet_wrap(~country)
-    ggsave(paste0(dir_out,"ecdc_cases_by_age_DNK_NOR.pdf"),width = 6,height = 3)
+    ggsave(paste0(dir_out,"ecdc_cases_by_age_DNK_NOR.png"),width = 6,height = 3)
     
     # Plot estimated infections vs reported cases
     # overall
     ggplot() +
         geom_line(aes(x=date,y=infections),backcalc_dt[,.(infections=sum(infections)),by=.(country,date)]) +
         geom_line(aes(x=date,y=new_cases/7),ecdc_cases_by_age[country %in% backcalc_dt[,unique(country)],.(new_cases=sum(new_cases)),by=.(country,date)],linetype="dashed") +
-        facet_wrap(~country) + ylim(c(0,6e4))
-    ggsave(paste0(dir_out,"infections_vs_obs_cases_",method,"_",source_deaths,".pdf"),width = 10,height = 8)
+        facet_wrap(~country)
+    ggsave(paste0(dir_out,"infections_vs_obs_cases_",method,"_",source_deaths,".png"),width = 10,height = 8)
     
     # by age
     agegroups_comp = c("0-49","50-79","80+")
@@ -1142,15 +1160,15 @@ plot_output = function(fnm){
     ggplot() +
         geom_line(aes(x=date,y=infections,group=age_group_comp,color=age_group_comp),backcalc_dt[,.(infections=sum(infections)),by=.(country,date,age_group_comp)]) +
         geom_line(aes(x=date,y=new_cases/7,group=age_group_comp,color=age_group_comp),ecdc_cases_by_age[country %in% backcalc_dt[,unique(country)],.(new_cases=sum(new_cases)),by=.(country,date,age_group_comp)],linetype="dashed") +
-        facet_wrap(~country) +  ylim(c(0,5e4))
-    ggsave(paste0(dir_out,"infections_vs_obs_cases_by_age_",method,"_",source_deaths,".pdf"),width = 10,height = 8)
+        facet_wrap(~country)
+    ggsave(paste0(dir_out,"infections_vs_obs_cases_by_age_",method,"_",source_deaths,".png"),width = 10,height = 8)
     
     # Denmark and Norway
     ggplot() +
         geom_line(aes(x=date,y=infections,group=age_group_comp,color=age_group_comp),backcalc_dt[country %in% c("Denmark","Norway"),.(infections=sum(infections)),by=.(country,date,age_group_comp)]) +
         geom_line(aes(x=date,y=new_cases/7,group=age_group_comp,color=age_group_comp),ecdc_cases_by_age[country %in% c("Denmark","Norway"),.(new_cases=sum(new_cases)),by=.(country,date,age_group_comp)],linetype="dashed") +
         facet_wrap(~country)
-    ggsave(paste0(dir_out,"infections_vs_obs_cases_by_age_",method,"_",source_deaths,"_DNK_NOR.pdf"),width = 6,height = 3)
+    ggsave(paste0(dir_out,"infections_vs_obs_cases_by_age_",method,"_",source_deaths,"_DNK_NOR.png"),width = 6,height = 3)
     
     # Compare with SeroTracker seroprevalence data
     serotracker_data = fread("../serotracker_data/SeroTracker Serosurveys Reporting Prevalence.csv")
@@ -1161,7 +1179,7 @@ plot_output = function(fnm){
         geom_line(aes(x=date,y=cum_prop_inf,group=age_group,color=age_group),backcalc_dt) +
         geom_point(aes(x=date,y=pct(Central.estimate),shape=scope),sero_data[country %in% backcalc_dt[,unique(country)]]) +
         facet_wrap(~country) + ylim(c(0,1))
-    ggsave(paste0(dir_out,"cum_prop_infected_vs_seroprev_",source_deaths,".pdf"),width = 10,height = 8)
+    ggsave(paste0(dir_out,"cum_prop_infected_vs_seroprev_",source_deaths,".png"),width = 10,height = 8)
         
     # Plot cumulative proportion infected or vaccinated vs seroprevalence
     ggplot() +
@@ -1169,15 +1187,15 @@ plot_output = function(fnm){
                   merge(backcalc_dt,dt[,.(country,date,age_group,cum_prop_v)],by=c("country","date","age_group"))) +
         geom_point(aes(x=date,y=pct(Central.estimate),shape=scope),sero_data[country %in% backcalc_dt[,unique(country)]]) +
         facet_wrap(~country) + ylim(c(0,1))
-    ggsave(paste0(dir_out,"cum_prop_infected_or_vaccinated_vs_seroprev_",source_deaths,".pdf"),width = 10,height = 8)
+    ggsave(paste0(dir_out,"cum_prop_infected_or_vaccinated_vs_seroprev_",source_deaths,".png"),width = 10,height = 8)
     
     p_deaths = plot_deaths(dt)
-    ggsave(paste0(dir_out,"deaths_by_age_",source_deaths,".pdf"),plot = p_deaths,width = 10,height = 8)
+    ggsave(paste0(dir_out,"deaths_by_age_",source_deaths,".png"),plot = p_deaths,width = 10,height = 8)
     
     ggplot(dt,aes(x=date,y=cum_prop_v,group=age_group,color=age_group)) +
         geom_line() +
         facet_wrap(~country)
-    ggsave(paste0(dir_out,"vax_cov_by_age.pdf"),width = 10,height = 8)
+    ggsave(paste0(dir_out,"vax_cov_by_age.png"),width = 10,height = 8)
     
 }
 

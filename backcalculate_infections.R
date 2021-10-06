@@ -239,7 +239,7 @@ vax = clean_ecdc_vaccination_data(ecdc_vax,country_iso_codes)
 vaccPHE = readRDS("../phe_data/vax-covidm20210925084913.rds")
 
 # Process to same format as cleaned ECDC data
-vaxENG = process_PHE_vaccination_data(vaccPHE)
+vaxENG = process_phe_vaccination_data(vaccPHE)
 
 # Make population data table for England
 popENG = CJ(country="England",age=0:100)
@@ -263,13 +263,22 @@ ifr = fread(datapath("IFR_by_age_ODriscoll.csv"))
 ecdc_vrnt_data = fread("../ecdc_data/ecdc_variant_data.csv")
 
 # Convert ISO weeks to dates
-ecdc_vrnt_data[,date:=ISOweek2date(paste0(sub("-","-W",year_week),"-7"))]
+ecdc_vrnt_data[,date:=as.IDate(ISOweek2date(paste0(sub("-","-W",year_week),"-7")))]
 
 # Plot data for different sources
 plot_variant_data(ecdc_vrnt_data,"GISAID")
 plot_variant_data(ecdc_vrnt_data,"TESSy")
 
 vrnt_data = process_variant_data(ecdc_vrnt_data)
+
+# Read in COG England data
+cog_vrnt_data = fread("../cog_data/lineages_by_ltla_and_week.tsv")
+
+# Process COG data
+vrnt_dataENG = process_cog_variant_data(cog_vrnt_data)
+
+# Bind to ECDC data
+vrnt_data = rbind(vrnt_data,vrnt_dataENG,fill=T)
 
 # Plot non-Alpha-Delta/Alpha/Delta proportions over time
 ggplot(vrnt_data,aes(x=date,y=prop_vrnt,group=vrnt,color=vrnt)) +
@@ -325,12 +334,12 @@ dt = dt[!(country %in% c("Iceland","Ireland","Latvia","Romania"))]
 # with scaling for Alpha and Delta severity
 dt[,ifr_t:=((1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v))+cum_prop_v/(1-ei*cum_prop_v)*(1-ei)*(1-ed)*(1-em))*(prop_vrnt+prop_vrnt2*1.5+prop_vrnt3*1.5*1.8)*ifr]
 ggplot(dt[,.(ifr_t=sum(ifr_t*population)/sum(population)),by=.(country,date)],aes(x=date,y=ifr_t,group=country,color=country)) + geom_line()
-ggsave(paste0(dir_out,"avg_ifr_over_time_sev_scld.pdf"),width = 5,height = 4)
+ggsave(paste0(dir_out,"avg_ifr_over_time_sev_scld.png"),width = 5,height = 4)
 
 # without scaling for Alpha and Delta severity
 dt[,ifr_t:=((1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v))+cum_prop_v/(1-ei*cum_prop_v)*(1-ei)*(1-ed)*(1-em))*ifr]
 ggplot(dt[,.(ifr_t=sum(ifr_t*population)/sum(population)),by=.(country,date)],aes(x=date,y=ifr_t,group=country,color=country)) + geom_line()
-ggsave(paste0(dir_out,"avg_ifr_over_time_not_sev_scld.pdf"),width = 5,height = 4)
+ggsave(paste0(dir_out,"avg_ifr_over_time_not_sev_scld.png"),width = 5,height = 4)
 
 
 # 

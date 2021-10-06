@@ -9,7 +9,7 @@ source("./backcalculation_functions.R")
 # 
 
 # Load initial conditions calculation output
-load("./output/2021-09-30/init_cond_output.RData")
+load("./output/2021-10-05/init_cond_output.RData")
 
 
 #
@@ -47,14 +47,14 @@ ggplot(melt(rem_burden_dt[country!="Greece"],measure.vars = c("pop_prop_u","pop_
     scale_alpha_manual(name="",values=c(0.4,1),labels=c("Unvaccinated/\npartially vaccinated","Fully vaccinated")) +
     labs(x="Proportion of population",y="Age group") +
     facet_wrap(~country)
-ggsave(paste0(dir_out,"vax_cov_pop_pyramids.pdf"),width = 10,height = 8)
+ggsave(paste0(dir_out,"vax_cov_pop_pyramids.png"),width = 10,height = 8)
 
 # Plot maximum remaining hospitalisations by age
 ggplot(rem_burden_dt[country!="Greece"],aes(x=cum_inc_hosp*1e5,y=age_group_model)) +
     geom_col() +
     labs(x="Maximum remaining hospitalisations/100,000 population",y="Age group") +
     facet_wrap(~country)
-ggsave(paste0(dir_out,"rem_hosps_by_age.pdf"),width = 10,height = 8)
+ggsave(paste0(dir_out,"rem_hosps_by_age.png"),width = 10,height = 8)
 
 # Plot maximum overall remaining hospitalisations against vaccine coverage
 ovrl_rem_burden_dt = rem_burden_dt[,.(population=sum(population),
@@ -72,6 +72,6 @@ ggplot(ovrl_rem_burden_dt[country!="Greece"],aes(x=cum_prop_v,y=cum_inc_hosp*1e5
     xlim(c(0.1,0.7)) +
     labs(x = "Proportion fully vaccinated",y = "Maximum remaining hospitalisations/100,000 population") +
     scale_y_log10()
-ggsave(paste0(dir_out,"rem_hosps_vs_prop_full_vax.pdf"),width = 10,height = 8)
+ggsave(paste0(dir_out,"rem_hosps_vs_prop_full_vax.png"),width = 10,height = 8)
 
 

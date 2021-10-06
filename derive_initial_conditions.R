@@ -1,6 +1,7 @@
 library(data.table)
 library(qs)
 library(ggplot2)
+library(ISOweek)
 
 source("./backcalculation_functions.R")
 
@@ -10,7 +11,7 @@ source("./backcalculation_functions.R")
 # 
 
 # Load backcalculation output
-load("./output/2021-09-30/backcalculation_output.RData")
+load("./output/2021-10-05/backcalculation_output.RData")
 
 # # Source script with delay functions
 # cm_path = "./covidm_for_fitting/"
@@ -21,9 +22,6 @@ theme_set(cowplot::theme_cowplot(font_size = 10) + theme(strip.background = elem
 # Set age groups to be the same as in deconvolution for the time being
 agegroups_model = factor(agegroups,levels = agegroups)
 min_ages_model = get_min_age(agegroups_model)
-
-# Read in UN population data
-pop = qread("../un_data/unwpp_data.qs")
 
 #
 # DISAGGREGATION OF INFECTIONS
@@ -75,6 +73,8 @@ ggplot(covy_dt,aes(x=age_group_model,y=y,group=country,color=country)) + geom_li
 
 # ADD VACCINATION NUMBERS
 vax_dt = construct_vax_data_table(vax,inc_dt[,unique(date)]-Ab_delay,agegroups_model,pop)
+vaxENG_dt = construct_vax_data_table(vaxENG,inc_dt[,unique(date)]-Ab_delay,agegroups_model,pop)
+vax_dt = rbind(vax_dt,vaxENG_dt)
 vax_dt[,date_v:=date]
 vax_dt[,date:=date+Ab_delay]
 vax_dt_wide = dcast(vax_dt,country + date + age_group + population ~ type,value.var = c("first","second","prop","cum_prop"))
