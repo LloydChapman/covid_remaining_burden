@@ -7,6 +7,9 @@ library(osfr)
 library(covidAgeData)
 
 age_strat_data_path = "../coverage_data/"
+# date_download = today()
+# age_strat_data_path = paste0(age_strat_data_path,date_download,"/")
+# dir.create(age_strat_data_path,recursive = T)
 datapath = function(x) paste0(age_strat_data_path,x)
 
 # Download input data from OSF
