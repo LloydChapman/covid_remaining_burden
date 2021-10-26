@@ -21,6 +21,8 @@ library(stringr)
 source("./backcalculation_functions.R")
 # source("./initial_conditions_functions.R")
 # source("./simulation_functions.R")
+source("./derive_initial_conditions.R")
+source("./calculate_remaining_burden.R")
 
 # TODO:
 # - sort out alignment of dates for deaths data and vaccination data - currently
@@ -143,119 +145,8 @@ agegroups_model = params$pop[[1]]$group_names
 agegroups_model = factor(agegroups_model,levels = agegroups_model)
 min_ages_model = get_min_age(agegroups_model)
 
-
-# Set vaccine efficacy parameters
-ve_params = list()
-
-# Infection:
-# eiX_vYZ = efficacy of dose Z of vaccine Y against infection with strain X
-# AstraZeneca
-# Dose 1
-ve_params$ei_va1  = VE(0.70)
-ve_params$ei2_va1 = VE(0.70)
-ve_params$ei3_va1 = VE(0.43)
-# Dose 2
-ve_params$ei_va2  = VE(0.75)
-ve_params$ei2_va2 = VE(0.75)
-ve_params$ei3_va2 = VE(0.63)
-
-# Pfizer / Moderna
-# Dose 1
-ve_params$ei_vb1  = VE(0.70)
-ve_params$ei2_vb1 = VE(0.70)
-ve_params$ei3_vb1 = VE(0.62)
-# Dose 2
-ve_params$ei_vb2  = VE(0.85)
-ve_params$ei2_vb2 = VE(0.85)
-ve_params$ei3_vb2 = VE(0.80)
-
-# Symptomatic disease:
-# ed_vYZiX = efficacy of dose Z of vaccine Y against disease given infection with strain X
-# AstraZeneca
-# Dose 1
-ve_params$ed_va1i  = VE(0.70,   ve_params$ei_va1)
-ve_params$ed_va1i2 = VE(0.70,   ve_params$ei2_va1)
-ve_params$ed_va1i3 = VE(0.48,   ve_params$ei3_va1)
-# Dose 2
-ve_params$ed_va2i  = VE(0.80,   ve_params$ei_va2)
-ve_params$ed_va2i2 = VE(0.80,   ve_params$ei2_va2)
-ve_params$ed_va2i3 = VE(0.65,   ve_params$ei3_va2)
-
-# Pfizer / Moderna
-# Dose 1
-ve_params$ed_vb1i  = VE(0.70,   ve_params$ei_vb1)
-ve_params$ed_vb1i2 = VE(0.70,   ve_params$ei2_vb1)
-ve_params$ed_vb1i3 = VE(0.62,   ve_params$ei3_vb1)
-# Dose 2
-ve_params$ed_vb2i  = VE(0.90,   ve_params$ei_vb2)
-ve_params$ed_vb2i2 = VE(0.90,   ve_params$ei2_vb2)
-ve_params$ed_vb2i3 = VE(0.81,   ve_params$ei3_vb2)
-
-# Hospitalisation:
-# eh_vYZiX = efficacy of dose Z of vaccine Y against hospitalisation given disease from strain X
-# AstraZeneca
-# Dose 1
-ve_params$eh_va1d  = VE(0.85, 1 - (1 - ve_params$ei_va1)  * (1 - ve_params$ed_va1i))
-ve_params$eh_va1d2 = VE(0.85, 1 - (1 - ve_params$ei2_va1) * (1 - ve_params$ed_va1i2))
-ve_params$eh_va1d3 = VE(0.83, 1 - (1 - ve_params$ei3_va1) * (1 - ve_params$ed_va1i3))
-# Dose 2
-ve_params$eh_va2d  = VE(0.90, 1 - (1 - ve_params$ei_va2)  * (1 - ve_params$ed_va2i))
-ve_params$eh_va2d2 = VE(0.90, 1 - (1 - ve_params$ei2_va2) * (1 - ve_params$ed_va2i2))
-ve_params$eh_va2d3 = VE(0.95, 1 - (1 - ve_params$ei3_va2) * (1 - ve_params$ed_va2i3))
-
-# Pfizer / Moderna
-# Dose 1
-ve_params$eh_vb1d  = VE(0.85, 1 - (1 - ve_params$ei_vb1)  * (1 - ve_params$ed_vb1i))
-ve_params$eh_vb1d2 = VE(0.85, 1 - (1 - ve_params$ei2_vb1) * (1 - ve_params$ed_vb1i2))
-ve_params$eh_vb1d3 = VE(0.92, 1 - (1 - ve_params$ei3_vb1) * (1 - ve_params$ed_vb1i3))
-# Dose 2
-ve_params$eh_vb2d  = VE(0.95, 1 - (1 - ve_params$ei_vb2)  * (1 - ve_params$ed_vb2i))
-ve_params$eh_vb2d2 = VE(0.95, 1 - (1 - ve_params$ei2_vb2) * (1 - ve_params$ed_vb2i2))
-ve_params$eh_vb2d3 = VE(0.97, 1 - (1 - ve_params$ei3_vb2) * (1 - ve_params$ed_vb2i3))
-
-# Mortality:
-# em_vYZdX = efficacy of dose Z of vaccine Y against death given disease from strain X
-# AstraZeneca
-# Dose 1
-ve_params$em_va1d  = VE(0.85, 1 - (1 - ve_params$ei_va1)  * (1 - ve_params$ed_va1i))
-ve_params$em_va1d2 = VE(0.85, 1 - (1 - ve_params$ei2_va1) * (1 - ve_params$ed_va1i2))
-ve_params$em_va1d3 = VE(0.83, 1 - (1 - ve_params$ei3_va1) * (1 - ve_params$ed_va1i3))
-# Dose 2
-ve_params$em_va2d  = VE(0.95, 1 - (1 - ve_params$ei_va2)  * (1 - ve_params$ed_va2i))
-ve_params$em_va2d2 = VE(0.95, 1 - (1 - ve_params$ei2_va2) * (1 - ve_params$ed_va2i2))
-ve_params$em_va2d3 = VE(0.95, 1 - (1 - ve_params$ei3_va2) * (1 - ve_params$ed_va2i3))
-
-# Pfizer / Moderna
-# Dose 1
-ve_params$em_vb1d  = VE(0.85, 1 - (1 - ve_params$ei_vb1)  * (1 - ve_params$ed_vb1i))
-ve_params$em_vb1d2 = VE(0.85, 1 - (1 - ve_params$ei2_vb1) * (1 - ve_params$ed_vb1i2))
-ve_params$em_vb1d3 = VE(0.92, 1 - (1 - ve_params$ei3_vb1) * (1 - ve_params$ed_vb1i3))
-# Dose 2
-ve_params$em_vb2d  = VE(0.95, 1 - (1 - ve_params$ei_vb2)  * (1 - ve_params$ed_vb2i))
-ve_params$em_vb2d2 = VE(0.95, 1 - (1 - ve_params$ei2_vb2) * (1 - ve_params$ed_vb2i2))
-ve_params$em_vb2d3 = VE(0.97, 1 - (1 - ve_params$ei3_vb2) * (1 - ve_params$ed_vb2i3))
-
-# Onward transmission:
-# et_vYZdX = efficacy of dose Z of vaccine Y against onward transmission given infection with strain X
-# AstraZeneca
-# Dose 1
-ve_params$et_va1i  = VE(0.47)
-ve_params$et_va1i2 = VE(0.47)
-ve_params$et_va1i3 = VE(0.42)
-# Dose 2
-ve_params$et_va2i  = VE(0.47)
-ve_params$et_va2i2 = VE(0.47)
-ve_params$et_va2i3 = VE(0.42)
-
-# Pfizer / Moderna
-# Dose 1
-ve_params$et_vb1i  = VE(0.47)
-ve_params$et_vb1i2 = VE(0.47)
-ve_params$et_vb1i3 = VE(0.42)
-# Dose 2
-ve_params$et_vb2i  = VE(0.47)
-ve_params$et_vb2i2 = VE(0.47)
-ve_params$et_vb2i3 = VE(0.42)
+# Get vaccine efficacies
+ve_params = get_vaccine_efficacies()
 
 # Set delays from vaccination to development of Ab
 Ab_delay1 = 28 # delay after 1st dose in days
@@ -554,10 +445,7 @@ for (i in 1:length(countries)){
 }
 
 
-#
-# PLOTTING
-#
-
+# Plot output against age-stratified case data and seroprevalence data for validation
 # Read in ECDC age-stratified case data for comparison with inferred infection time series
 ecdc_cases_by_age = read.csv("https://opendata.ecdc.europa.eu/covid19/agecasesnational/csv", na.strings = "", fileEncoding = "UTF-8-BOM")
 setDT(ecdc_cases_by_age)
@@ -574,3 +462,25 @@ plot_output(paste0(dir_out,"backcalculation_output.RData"),ecdc_cases_by_age,ser
 # Save output
 save.image(paste0(dir_out,"backcalculation_output.RData"))
 
+
+#
+# INITIAL CONDITIONS CALCULATION
+#
+
+
+derive_initial_conditions(paste0(dir_out,"backcalculation_output.RData"))
+
+
+#
+# REMAINING BURDEN CALCULATION
+#
+
+
+# Calculate remaining burden of hospitalisations and deaths assuming that entire
+# population is exposed now
+out = calculate_remaining_burden(paste0(dir_out,"init_cond_output.RData"))
+rem_burden_dt = out$rem_burden_dt
+ovrl_rem_burden_dt = out$ovrl_rem_burden_dt
+
+# Plot
+plot_remaining_burden(rem_burden_dt,ovrl_rem_burden_dt)
