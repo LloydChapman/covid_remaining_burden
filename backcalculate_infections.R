@@ -14,6 +14,7 @@ library(nnet)
 library(splines)
 library(effects)
 library(doParallel)
+library(truncnorm)
 library(cowplot)
 library(stringr)
 
@@ -45,13 +46,14 @@ source("./backcalculation_functions.R")
 # - correct dates for vaccination data to be end of ISO week - no, start of ISO week is fine
 # - sort out Finland data - interpolate with WHO data? - DONE
 # - review/correct proportions for LTC deaths, esp. France - DONE
-# - include multiple vaccine doses
+# - include multiple vaccine doses - DONE
 # - fix issue with early vaccination data for 70-79yo for Norway?
-# - shift infection time series when plotting against seroprevalence data to account for delay from infection to seroconversion (~20-21 days)
-# - download and save data automatically in script rather than manually
+# - shift infection time series when plotting against seroprevalence data to account for delay from infection to seroconversion (~20-21 days) - DONE
+# - download and save data automatically in script rather than manually - DONE
 # - fix issue with disaggregation of deaths in raw data for Ireland if it's included
 # - fix issue with IFR for Iceland (from jump in ei due to missing vaccine type data for 80+ year olds) if it's included
-# - rerun to correct mistake with England vax schedule data
+# - rerun to correct mistake with England vax schedule data - DONE
+# - incorporate uncertainty in IFR into output
 
 
 # 
@@ -483,8 +485,18 @@ ggsave(paste0(dir_out,"vrnt_prop_over_time.png"),width = 7.5,height = 6)
 
 
 # Convolve distributions to get incubation period and exposure-to-death delay distribution
+# ip_params = readRDS("incubation_period.rds")
+# ip_mean = convert_to_nat_mean(ip_params$mean,ip_params$sd)
+# ip_sd = convert_to_nat_sd(ip_params$mean,ip_params$sd)
+# dIncub = cm_delay_lnorm(ip_mean,ip_sd/ip_mean,t_max = 30,t_step = 1)$p
+# 
+# od_params = readRDS("onset_to_death_delay.rds")
+# od_mean = convert_to_nat_mean(od_params$mean,od_params$sd)
+# od_sd = convert_to_nat_sd(od_params$mean,od_params$sd)
+# dDeath = disc_conv(cm_delay_lnorm(ip_mean,ip_sd/ip_mean,t_max = 60,t_step = 1)$p,cm_delay_lnorm(od_mean,od_sd/od_mean,t_max = 60,t_step = 1)$p)
 dIncub = disc_conv(cm_delay_gamma(2.5, 2.5, t_max = 30, t_step = 1)$p,cm_delay_gamma(2.5, 4.0, t_max = 30, t_step = 1)$p)
 dDeath = disc_conv(cm_delay_gamma(2.5, 2.5, t_max = 60, t_step = 1)$p,cm_delay_gamma(15, 2.2, t_max = 60, t_step = 1)$p)
+
 # Normalise to ensure distributions sum to 1
 dIncub = dIncub/sum(dIncub)
 dDeath = dDeath/sum(dDeath)
@@ -494,7 +506,7 @@ frlty_idx = 3.8
 
 ## Backcalculate IFR-scaled infections
 method = "ride"
-out = run_backcalculation(dt,dDeath,dIncub,method = method)
+out = run_backcalculation(dt,dDeath,dIncub,frlty_idx,method = method)
 backcalc_dt = out$backcalc_dt
 backcalc_samps = out$backcalc_samps
 backcalc_dt_non_ltc = out$backcalc_dt_non_ltc
@@ -541,8 +553,6 @@ for (i in 1:length(countries)){
     }
 }
 
-save.image(paste0(dir_out,"backcalculation_output.RData"))
-
 
 #
 # PLOTTING
@@ -559,4 +569,8 @@ sero_data = process_seroprevalence_data(serotracker_data)
 
 # Plot backcalculation output
 plot_output(paste0(dir_out,"backcalculation_output.RData"),ecdc_cases_by_age,sero_data)
+
+
+# Save output
+save.image(paste0(dir_out,"backcalculation_output.RData"))
 

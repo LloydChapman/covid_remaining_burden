@@ -2,6 +2,7 @@ library(data.table)
 library(qs)
 library(ggplot2)
 library(cowplot)
+library(patchwork)
 library(scales)
 
 # source("./backcalculation_functions.R")
@@ -42,10 +43,18 @@ setnames(ifr_dt,"age_group","age_group_model")
 res = calc_rem_burden(prev_dt,ihr,ifr_dt)
 
 # Calculate 
-cols = c("population","cum_prop_v",
+# cols = c("population","cum_prop_v",
+#          "cum_hosp","cum_deaths","cum_inc_hosp","cum_inc_deaths",
+#          "cum_hosp_u","cum_deaths_u","cum_inc_hosp_u","cum_inc_deaths_u",
+#          "cum_hosp_v","cum_deaths_v","cum_inc_hosp_v","cum_inc_deaths_v",
+#          "cum_hosp_i","cum_deaths_i","cum_inc_hosp_i","cum_inc_deaths_i",
+#          "cum_prop_exp")
+cols = c("population","S","V","R",
          "cum_hosp","cum_deaths","cum_inc_hosp","cum_inc_deaths",
          "cum_hosp_u","cum_deaths_u","cum_inc_hosp_u","cum_inc_deaths_u",
-         "cum_hosp_v","cum_deaths_v","cum_inc_hosp_v","cum_inc_deaths_v","cum_prop_exp")
+         "cum_hosp_v","cum_deaths_v","cum_inc_hosp_v","cum_inc_deaths_v",
+         "cum_hosp_i","cum_deaths_i","cum_inc_hosp_i","cum_inc_deaths_i",
+         "cum_prop_exp")
 med = res[,lapply(.SD,median),.SDcols=cols,by=.(country,age_group_model,date)]
 q95l = res[,lapply(.SD,function(x) quantile(x,probs=0.025)),.SDcols=cols,by=.(country,age_group_model,date)]
 q95u = res[,lapply(.SD,function(x) quantile(x,probs=0.975)),.SDcols=cols,by=.(country,age_group_model,date)]
@@ -59,16 +68,24 @@ rem_burden_dt = merge(rem_burden_dt,q95u,by=c("country","age_group_model","date"
 
 
 # Calculate cumulative numbers vaccinated and unvaccinated, and corresponding population proportions
-rem_burden_dt[,`:=`(cum_v=cum_prop_v*population,cum_u=(1-cum_prop_v)*population)]
-rem_burden_dt[,`:=`(pop_prop_v=cum_v/sum(population),pop_prop_u=cum_u/sum(population)),by=.(country)]
+# rem_burden_dt[,`:=`(cum_v=cum_prop_v*population,cum_u=(1-cum_prop_v)*population)]
+# rem_burden_dt[,`:=`(pop_prop_v=cum_v/sum(population),pop_prop_u=cum_u/sum(population)),by=.(country)]
+rem_burden_dt[,`:=`(pop_prop_u=S/sum(population),pop_prop_v=V/sum(population),pop_prop_i=R/sum(population)),by=.(country)]
 
 # Plot vaccine coverage pyramids
-p1 = ggplot(melt(rem_burden_dt,measure.vars = c("pop_prop_u","pop_prop_v")),aes(x=value,y=age_group_model,alpha=variable)) +
+# p1 = ggplot(melt(rem_burden_dt,measure.vars = c("pop_prop_u","pop_prop_v")),aes(x=value,y=age_group_model,alpha=variable)) +
+#     geom_col(position = "stack") +
+#     scale_alpha_manual(name="",values=c(0.4,1),labels=c("Unvaccinated","Partially/fully\nvaccinated")) +
+#     labs(x="Proportion of population",y="Age group") +
+#     facet_wrap(~country)
+p1 = ggplot(melt(rem_burden_dt,measure.vars = c("pop_prop_u","pop_prop_i","pop_prop_v")),aes(x=value,y=age_group_model,alpha=variable)) +
     geom_col(position = "stack") +
-    scale_alpha_manual(name="",values=c(0.4,1),labels=c("Unvaccinated","Partially/fully\nvaccinated")) +
+    scale_alpha_manual(name="",values=c(0.3,0.6,1),c("Unvaccinated &\nunexposed","Previously\ninfected","Partially/fully\nvaccinated &\nuninfected")) +
     labs(x="Proportion of population",y="Age group") +
     facet_wrap(~country)
 # ggsave(paste0(dir_out,"vax_cov_pop_pyramids.png"),width = 10,height = 8)
+
+# Plot susceptible
 
 # Plot maximum remaining hospitalisations and deaths by age
 # p2 = ggplot(rem_burden_dt,aes(y=age_group_model)) +
@@ -77,10 +94,10 @@ p1 = ggplot(melt(rem_burden_dt,measure.vars = c("pop_prop_u","pop_prop_v")),aes(
 #     labs(x="Maximum remaining hospitalisations/100,000 population",y="Age group") +
 #     scale_x_log10() +
 #     facet_wrap(~country)
-p2 = ggplot(melt(rem_burden_dt,measure.vars = c("cum_inc_hosp_u","cum_inc_hosp_v")),aes(y=age_group_model)) +
+p2 = ggplot(melt(rem_burden_dt,measure.vars = c("cum_inc_hosp_u","cum_inc_hosp_i","cum_inc_hosp_v")),aes(y=age_group_model)) +
     geom_col(aes(x=value*1e5,alpha=variable),position="stack") +
     geom_errorbarh(aes(xmin=cum_inc_hosp_q95l*1e5,xmax=cum_inc_hosp_q95u*1e5),height=0.5) +
-    scale_alpha_manual(name="",values=c(0.4,1),labels=c("Unvaccinated","Partially/fully\nvaccinated")) +
+    scale_alpha_manual(name="",values=c(0.3,0.6,1),labels=c("Unvaccinated &\nunexposed","Previously\ninfected","Partially/fully\nvaccinated &\nuninfected")) +
     labs(x="Maximum remaining hospitalisations/100,000 population",y="Age group") +
     facet_wrap(~country)
 # ggsave(paste0(dir_out,"rem_hosps_by_age.png"),width = 10,height = 8)
@@ -91,10 +108,10 @@ p2 = ggplot(melt(rem_burden_dt,measure.vars = c("cum_inc_hosp_u","cum_inc_hosp_v
 #     labs(x="Maximum remaining deaths/100,000 population",y="Age group") +
 #     scale_x_log10(breaks=c(0.1,1,10,100,1000),labels=c("0.1","1","10","100","1000")) +
 #     facet_wrap(~country)
-p3 = ggplot(melt(rem_burden_dt,measure.vars = c("cum_inc_deaths_u","cum_inc_deaths_v")),aes(y=age_group_model)) +
+p3 = ggplot(melt(rem_burden_dt,measure.vars = c("cum_inc_deaths_u","cum_inc_deaths_i","cum_inc_deaths_v")),aes(y=age_group_model)) +
     geom_col(aes(x=value*1e5,alpha=variable),position="stack") +
     geom_errorbarh(aes(xmin=cum_inc_deaths_q95l*1e5,xmax=cum_inc_deaths_q95u*1e5),height=0.5) +
-    scale_alpha_manual(name="",values=c(0.4,1),labels=c("Unvaccinated","Partially/fully\nvaccinated")) +
+    scale_alpha_manual(name="",values=c(0.3,0.6,1),labels=c("Unvaccinated &\nunexposed","Previously\ninfected","Partially/fully\nvaccinated &\nuninfected")) +
     labs(x="Maximum remaining deaths/100,000 population",y="Age group") +
     facet_wrap(~country)
 # ggsave(paste0(dir_out,"rem_deaths_by_age.png"),width = 10,height = 8)
@@ -103,6 +120,7 @@ p3 = ggplot(melt(rem_burden_dt,measure.vars = c("cum_inc_deaths_u","cum_inc_deat
 max_ages_model = get_max_age(agegroups_model)
 max_ages_model[is.na(max_ages_model)] = Inf
 ovrl_res = res[,.(population=sum(population),
+                  S=sum(S),
                   cum_v=sum(cum_prop_v*population,na.rm=T),
                   cum_hosp=sum(cum_hosp,na.rm=T),
                   cum_deaths=sum(cum_deaths,na.rm=T),
@@ -134,6 +152,9 @@ print(ovrl_rem_burden_dt[,.(cum_hosp=sum(cum_hosp),cum_deaths=sum(cum_deaths))])
 # Cumulative proportion infected
 print(ovrl_rem_burden_dt[c(which.min(cum_prop_exp),which.max(cum_prop_exp)),.(country,cum_prop_exp,cum_prop_exp_q95l,cum_prop_exp_q95u)])
 
+# Remaining susceptible proportion
+print(ovrl_rem_burden_dt[c(which.min(S/population),which.max(S/population)),.(country,prevS=S/population,prevS_q95l=S_q95l/population,prevS_q95u=S_q95u/population)])
+
 # Plot maximum overall remaining burden:
 # hospitalisations against vaccine coverage
 p4 = ggplot(ovrl_rem_burden_dt,aes(x=cum_prop_v)) +
@@ -149,8 +170,9 @@ p4 = ggplot(ovrl_rem_burden_dt,aes(x=cum_prop_v)) +
 
 # p = plot_grid(p1+theme(legend.position="none"),p2,p4,labels = c("A","B","C"),nrow=2,ncol=2)
 # ggsave(paste0(dir_out,"vax_cov_and_rem_hosps.png"),plot = p,width = 12,height = 9.6)
-p = plot_grid(p1,p2+theme(legend.position="none"),p4,labels = c("A","B","C"),nrow=2,ncol=2,rel_widths=c(1.1,1))
-ggsave(paste0(dir_out,"vax_cov_and_rem_hosps.png"),plot=p,width = 13,height = 10.4)
+# p = plot_grid(p1,p2+theme(legend.position="none"),p4,labels = c("A","B","C"),nrow=2,ncol=2,rel_widths=c(1.1,1))
+p = (p1 + theme(legend.position="none") + p2) / p4 + plot_annotation(tag_levels = 'A')
+ggsave(paste0(dir_out,"vax_cov_and_rem_hosps.png"),plot=p,width = 12,height = 10)
 
 # deaths against vaccine coverage
 p5 = ggplot(ovrl_rem_burden_dt,aes(x=cum_prop_v)) +

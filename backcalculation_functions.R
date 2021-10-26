@@ -638,6 +638,8 @@ construct_ifr_data_table = function(ifr,base_dt,min_ages,agegroups){
     cols2 = c("ifr","ifr_lb","ifr_ub")
     ifr_dt = ifr_dt[,lapply(.SD,function(x) sum(x*population)/sum(population)),.SDcols=cols2,by=c("country","age_group")]    
     
+    # Calculate standard deviation of posterior distribution of IFR assuming it is normal
+    ifr_dt[,sigma:=(ifr-ifr_lb)/qnorm(0.975)]
 }
 
 # construct_data_table = function(agegroups,deaths,pop,cols,ltc_deaths,vax,num_type,ifr){
@@ -986,7 +988,7 @@ construct_data_table = function(agegroups,deaths,pop,cols,ltc_deaths,vax,Ab_dela
                             p_vb2*(prop_vrnt*ve_params$et_vb2i+prop_vrnt2*ve_params$et_vb2i2+prop_vrnt3*ve_params$et_vb2i3),0))]
     
     # Calculate IFRs under vaccination with different vaccine types
-    dt[,ifr_v:=(1-ed)*(1-em)*ifr]
+    # dt[,ifr_v:=(1-ed)*(1-em)*ifr]
     # dt[,`:=`(ifr_va=(prop_vrnt*(1-ed_va2i)*(1-em_va2d) +
     #                      prop_vrnt2*(1-ed_va2i2)*(1-em_va2d2) + 
     #                      prop_vrnt3*(1-ed_va2i3)*(1-em_va2d3))*ifr,
@@ -997,11 +999,15 @@ construct_data_table = function(agegroups,deaths,pop,cols,ltc_deaths,vax,Ab_dela
     # Calculate IFR over time
     # dt[,ifr_t := ifr]
     dt[,cum_prop_v:=cum_prop_va_1+cum_prop_vb_1]
-    dt[,ifr_t:=pmax(((1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v))*ifr+(1-ei)*cum_prop_v/(1-ei*cum_prop_v)*ifr_v),0)] # set to 0 where approximation gives negative IFR for older age groups for Iceland, as IFR can't be negative
+    dt[,ifr_t:=pmax((1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v)+(1-ei)*cum_prop_v/(1-ei*cum_prop_v)*(1-ed)*(1-em))*ifr,0)] # set to 0 where IFR is negative for older age groups for Iceland (due to cum_prop_v>1), as IFR can't be negative
     # dt[,ifr_t := (1-cum_prop_va-cum_prop_vb)*ifr + cum_prop_va*ifr_va + cum_prop_vb*ifr_vb]
     # dt[,ifr_t := (1-cum_prop_va-cum_prop_vb)*(prop_vrnt+prop_vrnt2+prop_vrnt3)*ifr + 
     #        cum_prop_va*ifr_va + 
     #        cum_prop_vb*ifr_vb]
+    
+    # # Calculate uncertainty bounds on time-varying IFR
+    # dt[,ifr_t_lb:=pmax((1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v)+(1-ei)*cum_prop_v/(1-ei*cum_prop_v)*(1-ed)*(1-em))*ifr_lb,0)]
+    # dt[,ifr_t_ub:=pmax((1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v)+(1-ei)*cum_prop_v/(1-ei*cum_prop_v)*(1-ed)*(1-em))*ifr_ub,0)]
     
     # Plot population-weighted average IFR over time for all countries
     print(ggplot(dt[,.(ifr_t=sum(ifr_t*population)/sum(population)),by=.(country,date)],
@@ -1039,20 +1045,35 @@ plot_vax_cov = function(dt){
 }
 
 plot_ifr = function(dt){
-    p = ggplot(dt,aes(x=date,y=ifr_t,group=age_group,color=age_group)) + 
-        geom_line() +
-        labs(x="Date",y="IFR",color="Age group") + 
+    dt[,`:=`(ifr_t_lb=ifr_t-qnorm(0.975)*sigma*ifr_t/ifr,
+             ifr_t_ub=ifr_t+qnorm(0.975)*sigma*ifr_t/ifr)]
+    p = ggplot(dt,aes(x=date)) + 
+        geom_line(aes(y=ifr_t,group=age_group,color=age_group)) +
+        geom_ribbon(aes(ymin=ifr_t_lb,ymax=ifr_t_ub,fill=age_group),linetype=0,alpha=0.5) +
+        labs(x="Date",y="IFR",color="Age group",fill="Age group") + 
         # scale_y_log10() +
         facet_wrap(~country)
     return(p)    
 }
 
 plot_avg_ifr = function(dt){
-    p = ggplot(dt[,.(ifr_t=sum(ifr_t*population)/sum(population)),by=.(country,date)],aes(x=date,y=ifr_t,group=country,color=country)) + 
-        geom_line() +
-        labs(x="Date",y="IFR",color="Country")
+    dt[,`:=`(ifr_t_lb=ifr_t-qnorm(0.975)*sigma*ifr_t/ifr,
+             ifr_t_ub=ifr_t+qnorm(0.975)*sigma*ifr_t/ifr)]
+    cols = c("ifr_t","ifr_t_lb","ifr_t_ub")
+    p = ggplot(dt[,lapply(.SD,function(x) sum(x*population)/sum(population)),.SDcols=cols,by=.(country,date)],aes(x=date)) + 
+        geom_line(aes(y=ifr_t,group=country,color=country)) +
+        geom_ribbon(aes(ymin=ifr_t_lb,ymax=ifr_t_ub,fill=country),linetype=0,alpha=0.1) + 
+        labs(x="Date",y="IFR",color="Country",fill="Country")
     print(dt[,.(ifr_t=sum(ifr_t*population)/sum(population)),by=.(country,date)][,.(ifr=max(ifr_t)),by=.(country)])
     return(p)
+}
+
+convert_to_nat_mean = function(mu,sigma){
+    exp(mu+sigma^2/2)
+}
+
+convert_to_nat_sd = function(mu,sigma){
+    sqrt((exp(sigma^2)-1)*exp(2*mu+sigma^2))
 }
 
 # Deconvolution function
@@ -1204,10 +1225,10 @@ backcalc = function(dt,dDeath,dIncub,method = "ride"){
     return(list(backcalc_dt,backcalc_samps))
 }
 
-run_backcalculation = function(dt,dDeath,dIncub,method = "ride"){
+run_backcalculation = function(dt,dDeath,dIncub,frlty_idx,method = "ride"){
     # Extract non-LTC and LTC data
-    dt_non_ltc = dt[,.(country,age_group,date,deaths_i_both=deaths_i_both_non_ltc,ifr_t)]
-    dt_ltc = dt[get_min_age(age_group)>=60,.(country,age_group,date,deaths_i_both=deaths_i_both_ltc,ifr_t=frlty_idx*ifr_t)]
+    dt_non_ltc = dt[,.(country,age_group,date,deaths_i_both=deaths_i_both_non_ltc,ifr,ifr_t,sigma)]
+    dt_ltc = dt[get_min_age(age_group)>=60,.(country,age_group,date,deaths_i_both=deaths_i_both_ltc,ifr=frlty_idx*ifr,ifr_t=frlty_idx*ifr_t,sigma=frlty_idx*sigma)]
     
     tstart = Sys.time()
     # non-LTC
@@ -1255,6 +1276,8 @@ run_backcalculation = function(dt,dDeath,dIncub,method = "ride"){
 }
 
 calc_exposures_and_infections_CI = function(dt,samps,dIncub){
+    # dt[,sigma:=(ifr-ifr_lb)/qnorm(0.975)]
+    # dt[,sigma_t:=(1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v)+(1-ei)*cum_prop_v/(1-ei*cum_prop_v)*(1-ed)*(1-em))*sigma]
     countries = dt[,unique(country)]
     agegroups = dt[,unique(age_group)]
     exposures_samps = vector("list",length(samps))
@@ -1266,8 +1289,19 @@ calc_exposures_and_infections_CI = function(dt,samps,dIncub){
             k = (i-1)*length(agegroups)+j
             cntry = countries[i]
             age_grp = agegroups[j]
-            ifr_vec = dt[country==cntry & age_group==age_grp,ifr_t]
-            exposures_samps[[k]] = t(t(samps[[k]])/ifr_vec)
+            # ifr_vec = dt1[country==cntry & age_group==age_grp,ifr_t]
+            # exposures_samps[[k]] = t(t(samps[[k]])/ifr_vec)
+            # ifr_samps = matrix(rtruncnorm(nrow(samps[[k]])*ncol(samps[[k]]),a=0,b=Inf,mean=dt1[country==cntry & age_group==age_grp,ifr_t],sd=dt1[country==cntry & age_group==age_grp,sigma]),
+            #                    nrow=nrow(samps[[k]]),ncol=ncol(samps[[k]]),byrow=T)
+            nsamps = nrow(samps[[k]])
+            nt = ncol(samps[[k]])
+            ifr_samps = matrix(0,nrow=nsamps,ncol=nt)
+            while (sum(ifr_samps<=0)>0){ # resample if there are any negative or zero IFRs
+                ifr_samps = matrix(dt1[country==cntry & age_group==age_grp,ifr_t],nrow=nsamps,ncol=nt,byrow=T) + 
+                    t(t(matrix(dt1[country==cntry & age_group==age_grp,ifr_t/ifr],
+                               nrow=nsamps,ncol=nt,byrow=T)*rnorm(nsamps,0,dt1[country==cntry & age_group==age_grp,sigma][1])))
+            }
+            exposures_samps[[k]] = samps[[k]]/ifr_samps
             infections_samps[[k]] = apply(exposures_samps[[k]],2,function(x) disc_conv(x,dIncub))
             dt1[country==cntry & age_group==age_grp,`:=`(exposures_dead_q95l=apply(samps[[k]],2,function(x) quantile(x,probs = 0.025)),exposures_dead_q95u=apply(samps[[k]],2,function(x) quantile(x,probs = 0.975)))]
             dt1[country==cntry & age_group==age_grp,`:=`(exposures_q95l=apply(exposures_samps[[k]],2,function(x) quantile(x,probs = 0.025)),exposures_q95u=apply(exposures_samps[[k]],2,function(x) quantile(x,probs = 0.975)))]
@@ -1337,8 +1371,13 @@ process_seroprevalence_data = function(sero_data){
                               Data.source=URL,
                               N.tests=`Denominator Value`
                           )]
-    # Remove social housing serosurvey data for Denmark and early regional estimates for Italy
-    sero_data = sero_data[!((country=="Denmark" & Central.estimate=="17.30%")|(country=="Italy" & Start.date<=as.Date("2020-05-05")))]
+    # Remove social housing serosurvey data for Denmark
+    sero_data = sero_data[!(country=="Denmark" & Central.estimate=="17.30%")]
+    # Remove early regional estimates for Italy
+    sero_data = sero_data[!(country=="Italy" & Start.date<=as.Date("2020-05-05"))]
+    # Remove data for Finland with <20 tests
+    sero_data = sero_data[!(country=="Finland" & N.tests<20)]
+    
     # Change country name for surveys in England so that England data is plotted
     sero_data[region=="United Kingdom of Great Britain and Northern Ireland; England",country:="England"]
     sero_data[,date := Start.date + (End.date - Start.date)/2]
@@ -1406,46 +1445,57 @@ plot_output = function(fnm,ecdc_cases_by_age,sero_data){
     
     # Compare with SeroTracker seroprevalence data
     # Plot cumulative proportion exposed vs seroprevalence
-    print(backcalc_dt[,.(cum_prop_exp=max(cum_prop_exp)),by=.(country)])
-    cum_exp_samps = vector("list",length(exposures_samps))
+    # print(merge(backcalc_dt[,.(date=max(date)),by=.(country)],backcalc_dt,by=c("country","date"),all.x=T)[,.(cum_prop_exp=sum(cum_exp)/sum(population)),by=.(country)])
+    # cum_exp_samps = vector("list",length(exposures_samps))
+    cum_exp_u_samps = vector("list",length(exposures_samps))
     for (i in 1:length(countries)){
         for (j in 1:length(agegroups)){
             k = (i-1)*length(agegroups) + j
             cntry = countries[i]
             age_grp = agegroups[j]
-            cum_exp_samps[[k]] = t(apply(exposures_samps[[k]],1,cumsum))
-            backcalc_dt[country==cntry & age_group==age_grp,`:=`(cum_exp_q95l=apply(cum_exp_samps[[k]],2,function(x) quantile(x,probs = 0.025)),
-                                                                 cum_exp_q95u=apply(cum_exp_samps[[k]],2,function(x) quantile(x,probs = 0.975)))] #cum_exp_med=apply(cum_exp_samps[[k]],2,function(x) quantile(x,probs = 0.5)),
+            # cum_exp_samps[[k]] = t(apply(exposures_samps[[k]],1,cumsum))
+            # Calculate proportions of infections that are among unvaccinated individuals
+            prop_exp_u = dt[country==cntry & age_group==age_grp,1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v)]
+            cum_exp_u_samps[[k]] = t(apply(t(t(exposures_samps[[k]]*prop_exp_u)),1,cumsum))
+            backcalc_dt[country==cntry & age_group==age_grp,`:=`(cum_exp_u_q95l=apply(cum_exp_u_samps[[k]],2,function(x) quantile(x,probs = 0.025)),
+                                                                 cum_exp_u_q95u=apply(cum_exp_u_samps[[k]],2,function(x) quantile(x,probs = 0.975)))] #cum_exp_med=apply(cum_exp_samps[[k]],2,function(x) quantile(x,probs = 0.5)),
         }
     }
-    backcalc_dt[,`:=`(cum_prop_exp_q95l=cum_exp_q95l/population,cum_prop_exp_q95u=cum_exp_q95u/population)] #cum_prop_exp_med=cum_exp_med/population,
+    backcalc_dt[,`:=`(cum_prop_exp_u_q95l=cum_exp_u_q95l/population,cum_prop_exp_u_q95u=cum_exp_u_q95u/population)] #cum_prop_exp_med=cum_exp_med/population,
     # backcalc_dt[,`:=`(cum_prop_exp_q95l=pmin(cum_exp_q95l/population,1),cum_prop_exp_q95u=pmin(cum_exp_q95u/population,1))] #cum_prop_exp_med=cum_exp_med/population,
     # TODO - think about interval (quantile/HPDI) to use for uncertainty as posteriors for cumulative proportion infected for some countries and age groups are very skewed
-    p2 = ggplot() +
-        geom_line(aes(x=date,y=cum_prop_exp,group=age_group,color=age_group),backcalc_dt) +
-        geom_ribbon(aes(x=date,ymin=cum_prop_exp_q95l,ymax=cum_prop_exp_q95u,fill=age_group),backcalc_dt,linetype=0,alpha=0.5) +
+    backcalc_dt[,exposures_u:=dt[,1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v)]*exposures]
+    backcalc_dt[,cum_exp_u:=cumsum(exposures_u),by=.(country,age_group)]
+    backcalc_dt[,cum_prop_exp_u:=cum_exp_u/population]
+    ggplot() +
+        geom_line(aes(x=date,y=cum_prop_exp_u,group=age_group,color=age_group),backcalc_dt) +
+        geom_ribbon(aes(x=date,ymin=cum_prop_exp_u_q95l,ymax=cum_prop_exp_u_q95u,fill=age_group),backcalc_dt,linetype=0,alpha=0.5) +
         geom_point(aes(x=date,y=pct(Central.estimate),shape=scope),sero_data[country %in% backcalc_dt[,unique(country)]],size=0.8) +
+        # geom_errorbar(aes(x=date,ymin=pct(Lower.bound),ymax=pct(Upper.bound)),sero_data[country %in% backcalc_dt[,unique(country)]]) +
         ylim(c(0,1)) +
-        labs(x="Date",y="Cumulative proportion infected",color="Age group",fill="Age group",shape="Scope") +
+        labs(x="Date",y="Cumulative proportion unvaccinated infected",color="Age group",fill="Age group",shape="Scope") +
         facet_wrap(~country)
-    # ggsave(paste0(dir_out,"cum_prop_infected_vs_seroprev_",source_deaths,".png"),width = 10,height = 8)
+    ggsave(paste0(dir_out,"cum_prop_infected_vs_seroprev_",source_deaths,".png"),width = 10,height = 8)
+        
+    # Plot cumulative proportion infected or vaccinated vs seroprevalence
+    # Add 18 days to exposure dates for infection-to-seroconversion delay: 
+    # 13.3 days from onset to seroconversion [Borremans eLife 2020] + 5 days incubation period
+    backcalc_dt = merge(backcalc_dt[,date:=date+18],dt[,.(country,date,age_group,cum_prop_v)],by=c("country","date","age_group"))
+    p2 = ggplot() +
+        geom_line(aes(x=date,y=cum_prop_exp_u+cum_prop_v,group=age_group,color=age_group),backcalc_dt[cum_prop_v==0]) +
+        geom_line(aes(x=date,y=cum_prop_exp_u+cum_prop_v,group=age_group,color=age_group),backcalc_dt[cum_prop_v!=0],linetype="dashed") +
+        geom_ribbon(aes(x=date,ymin=cum_prop_exp_u_q95l+cum_prop_v,ymax=cum_prop_exp_u_q95u+cum_prop_v,fill=age_group),backcalc_dt,linetype=0,alpha=0.5) + 
+        geom_point(aes(x=date,y=pct(Central.estimate),shape=scope),sero_data[country %in% backcalc_dt[,unique(country)]],size=0.8) +
+        # geom_errorbar(aes(x=date,ymin=pct(Lower.bound),ymax=pct(Upper.bound)),sero_data[country %in% backcalc_dt[,unique(country)]]) +
+        ylim(c(0,1)) +
+        labs(x="Date",y="Cumulative proportion infected or vaccinated",color="Age group",fill="Age group",shape="Scope") +
+        facet_wrap(~country)
+    # ggsave(paste0(dir_out,"cum_prop_infected_or_vaccinated_vs_seroprev_",source_deaths,".png"),width = 10,height = 8)
     p = plot_grid(p1+theme(legend.position="none",axis.text.x=element_text(angle=45,hjust=1)),
                   p2+theme(legend.position="none",axis.text.x=element_text(angle=45,hjust=1)),
                   labels=c("A","B"))
     l = get_legend(p2 + theme(legend.box.margin = margin(0,0,0,12)))
-    ggsave(paste0(dir_out,"infections_and_cum_prop_infected_",method,"_",source_deaths,".png"),plot_grid(p,l,rel_widths = c(3,.4)),width = 10,height = 4)
-        
-    # Plot cumulative proportion infected or vaccinated vs seroprevalence
-    plt_dt = merge(backcalc_dt,dt[,.(country,date,age_group,cum_prop_v)],by=c("country","date","age_group"))
-    ggplot() +
-        geom_line(aes(x=date,y=cum_prop_exp+cum_prop_v,group=age_group,color=age_group),plt_dt) +
-        geom_ribbon(aes(x=date,ymin=cum_prop_exp_q95l+cum_prop_v,ymax=cum_prop_exp_q95u+cum_prop_v,fill=age_group),plt_dt,linetype=0,alpha=0.5) + 
-        geom_point(aes(x=date,y=pct(Central.estimate),shape=scope),sero_data[country %in% backcalc_dt[,unique(country)]]) +
-        ylim(c(0,1)) +
-        labs(x="Date",y="Cumulative proportion infected",color="Age group",shape="Scope") +
-        facet_wrap(~country)
-    ggsave(paste0(dir_out,"cum_prop_infected_or_vaccinated_vs_seroprev_",source_deaths,".png"),width = 10,height = 8)
-    
+    ggsave(paste0(dir_out,"infections_and_cum_prop_infected_or_vaccinated_",method,"_",source_deaths,".png"),plot_grid(p,l,rel_widths = c(3,.4)),width = 10,height = 4)
 }
 
 # calc_init_condns = function(inc_dt,vax_dt_wide){
@@ -1565,7 +1615,7 @@ calc_init_condns = function(inc_dt,vax_dt_wide,agegroups_model,covy_dt,vrnt_prop
                             p_vb2*(prop_vrnt*ve_params$et_vb2i+prop_vrnt2*ve_params$et_vb2i2+prop_vrnt3*ve_params$et_vb2i3),0))]
     
     # TODO - THIS LINE NEEDS CORRECTING ONCE ISSUE WITH et AND ed VALUES IS RESOLVED
-    prev_dt[,`:=`(q=(1-ei)*(1-ed),r=(1-ei)*ed)]
+    # prev_dt[,`:=`(q=(1-ei)*(1-ed),r=(1-ei)*ed)]
     # prev_dt[,`:=`(q=(1-ei)*(1-ed),r=(1-ei)*(ed-et),s=(1-ei)*et)]
     
     # Calculate cumulative proportion vaccinated with either type A or type B vaccine
@@ -1665,11 +1715,13 @@ calc_rem_burden = function(prev_dt,ihr,ifr_dt){
     # rem_burden_dt[,exposures_v:=fifelse(nS_E!=0,pmin(nV_E/nS_E*S,V),0)]
     # rem_burden_dt[,`:=`(cum_hosp_v=y*(1-eh)*ihr*exposures_v,cum_deaths_v=y*(1-em)*ifr*exposures_v)]
     rem_burden_dt[,`:=`(cum_hosp_v=y*(1-ei)*(1-ed)*(1-eh)*ihr*V,cum_deaths_v=y*(1-ei)*(1-ed)*(1-em)*ifr*V)]
+    # Calculate maximum number of hospitalisations and deaths among previously infected
+    rem_burden_dt[,`:=`(cum_hosp_i=y*(1-ei)*(1-ed)*(1-eh)*ihr*R,cum_deaths_i=y*(1-ei)*(1-ed)*(1-em)*ifr*R)]
     
     # Calculate total maximum hospitalisations and deaths
-    rem_burden_dt[,`:=`(cum_hosp=cum_hosp_u+cum_hosp_v,cum_deaths=cum_deaths_u+cum_deaths_v)]
+    rem_burden_dt[,`:=`(cum_hosp=cum_hosp_u+cum_hosp_v+cum_hosp_i,cum_deaths=cum_deaths_u+cum_deaths_v+cum_deaths_i)]
     # rem_burden_dt[,`:=`(cum_inc_hosp=cum_hosp/population,cum_inc_deaths=cum_deaths/population)]
-    cols = c("cum_hosp_u","cum_deaths_u","cum_hosp_v","cum_deaths_v","cum_hosp","cum_deaths")
+    cols = c("cum_hosp_u","cum_deaths_u","cum_hosp_v","cum_deaths_v","cum_hosp_i","cum_deaths_i","cum_hosp","cum_deaths")
     rem_burden_dt[,(sub("cum","cum_inc",cols)):=lapply(.SD,function(x) x/population),.SDcols=cols]
     
     return(rem_burden_dt)
