@@ -88,41 +88,7 @@ datapath = function(x) paste0(covid_data_path, x)
 country_iso_codes = readRDS(datapath("country_iso_codes.rds"))
 
 # Get age groups from covidm
-cm_path = "./covidm_for_fitting"
-cm_build = F
-cm_version = 2
-source(paste0(cm_path,"/R/covidm_new.R"))
 popUK = readRDS(datapath("popNHS.rds"))
-matricesUK = readRDS(datapath("matricesNHS.rds"))
-cm_populations = rbind(cm_populations[name != "United Kingdom"], popUK)
-cm_matrices = c(cm_matrices, matricesUK)
-
-# Get names of countries that are in cm_matrices
-regions = cm_populations[location_type==4 & name %in% names(cm_matrices),as.character(unique(name))]
-
-# Set delay distributions:
-# latent period
-dE  = cm_delay_gamma(2.5, 2.5, t_max = 15, t_step = 1)$p
-# presymptomatic period
-dIp = cm_delay_gamma(2.5, 4.0, t_max = 15, t_step = 1)$p
-# symptomatic period
-dIs = cm_delay_gamma(2.5, 4.0, t_max = 15, t_step = 1)$p
-# asymptomatic period
-dIa = cm_delay_gamma(5.0, 4.0, t_max = 15, t_step = 1)$p
-# infection-to-hospitalisation delay
-dHosp = cm_delay_gamma(6.0 + 2.5, 0.71, t_max = 60, t_step = 1)$p
-# infection-to-death delay
-dDeath = cm_delay_lnorm(15, 0.9, t_max = 60, t_step = 1)$p
-
-# Build parameters for different regions ###
-params = cm_parameters_SEI3R(regions, deterministic = T, 
-                             date_start = "2020-01-01", 
-                             date_end = date_fitting,
-                             dE  = dE,
-                             dIp = dIp,
-                             dIs = dIs,
-                             dIa = dIa)
-params = cm_split_matrices_ex_in(params, 15)
 
 # Get age-dependent susceptibility and symptomatic fraction
 covid_scenario = qread(datapath("2-linelist_both_fit_fIa0.5-rbzvih.qs"));
@@ -131,17 +97,9 @@ covu = unname(rep(colMeans(covid_scenario[,..colsu]), each = 2))
 colsy = names(covid_scenario)[grep("y_",names(covid_scenario))]
 covy = unname(rep(colMeans(covid_scenario[,..colsy]), each = 2))
 
-for (i in seq_along(params$pop)) {
-    params$pop[[i]]$u = 0.08*covu / mean(covu);
-    params$pop[[i]]$u2 = 0.08*covu / mean(covu);
-    params$pop[[i]]$u3 = 0.08*covu / mean(covu);
-    params$pop[[i]]$y = covy;
-    params$pop[[i]]$y2 = covy;
-    params$pop[[i]]$y3 = covy;
-}
-
-# get list of age groups in covidm
-agegroups_model = params$pop[[1]]$group_names
+# Get list of age groups in covidm
+agegroups_model = c("0-4","5-9","10-14","15-19","20-24","25-29","30-34","35-39",
+                    "40-44","45-49","50-54","55-59","60-64","65-69","70-74","75+")
 agegroups_model = factor(agegroups_model,levels = agegroups_model)
 min_ages_model = get_min_age(agegroups_model)
 
@@ -215,10 +173,8 @@ ltc_deaths = fread("../ltccovid_data/ltc_deaths.csv")
 
 # Read in ECDC vaccination data
 # ecdc_vax = fread("../ecdc_data/ecdc_vaccination_data.csv")
-ecdc_vax = read.csv("https://opendata.ecdc.europa.eu/covid19/vaccine_tracker/csv", na.strings = "", fileEncoding = "UTF-8-BOM")
-setDT(ecdc_vax)
-dir.create(paste0("../ecdc_data/",date_fitting),recursive = T)
-write.csv(ecdc_vax,paste0("../ecdc_data/",date_fitting,"/ecdc_vaccination_data.csv"),row.names=F)
+ecdc_vax = get_data("https://opendata.ecdc.europa.eu/covid19/vaccine_tracker/csv","csv",
+                    paste0("../ecdc_data/",date_fitting,"/"),"ecdc_vaccination_data.csv")
 
 # Clean ECDC vaccination data
 # out = clean_ecdc_vaccination_data(ecdc_vax,country_iso_codes)
@@ -252,10 +208,8 @@ ifr = fread(datapath("IFR_by_age_ODriscoll.csv"))
 
 # Read in ECDC variant data
 # ecdc_vrnt_data = fread("../ecdc_data/ecdc_variant_data.csv")
-ecdc_vrnt_data = read.csv("https://opendata.ecdc.europa.eu/covid19/virusvariant/csv")
-setDT(ecdc_vrnt_data)
-dir.create(paste0("../ecdc_data/",date_fitting),recursive = T)
-write.csv(ecdc_vrnt_data,paste0("../ecdc_data/",date_fitting,"/ecdc_variant_data.csv"),row.names=F)
+ecdc_vrnt_data = get_data("https://opendata.ecdc.europa.eu/covid19/virusvariant/csv","csv",
+                          paste0("../ecdc_data/",date_fitting,"/"),"ecdc_variant_data.csv")
 
 # Convert ISO weeks to dates
 ecdc_vrnt_data[,date:=as.IDate(ISOweek2date(paste0(sub("-","-W",year_week),"-7")))]
@@ -269,10 +223,8 @@ vrnt_data = process_variant_data(ecdc_vrnt_data)
 
 # Read in COG England data
 # cog_vrnt_data = fread("../cog_data/lineages_by_ltla_and_week.tsv")
-cog_vrnt_data = read.delim("https://covid-surveillance-data.cog.sanger.ac.uk/download/lineages_by_ltla_and_week.tsv", na.strings = "")
-setDT(cog_vrnt_data)
-dir.create(paste0("../cog_data/",date_fitting),recursive = T)
-write.table(cog_vrnt_data,paste0("../cog_data/",date_fitting,"/lineages_by_ltla_and_week.tsv"),sep="\t",row.names = F)
+cog_vrnt_data = get_data("https://covid-surveillance-data.cog.sanger.ac.uk/download/lineages_by_ltla_and_week.tsv",
+                         "tsv",paste0("../cog_data/",date_fitting,"/"),"lineages_by_ltla_and_week.tsv")
 
 # Convert week end date from Date to IDate
 cog_vrnt_data[,WeekEndDate:=as.IDate(WeekEndDate)]
@@ -447,9 +399,8 @@ for (i in 1:length(countries)){
 
 # Plot output against age-stratified case data and seroprevalence data for validation
 # Read in ECDC age-stratified case data for comparison with inferred infection time series
-ecdc_cases_by_age = read.csv("https://opendata.ecdc.europa.eu/covid19/agecasesnational/csv", na.strings = "", fileEncoding = "UTF-8-BOM")
-setDT(ecdc_cases_by_age)
-write.csv(ecdc_cases_by_age,paste0("../ecdc_data/",date_fitting,"/ecdc_cases_by_age.csv"),row.names=F)
+ecdc_cases_by_age = get_data("https://opendata.ecdc.europa.eu/covid19/agecasesnational/csv","csv",
+                             paste0("../ecdc_data/",date_fitting,"/"),"ecdc_cases_by_age.csv")
 
 # Read in and process seroprevalence data from SeroTracker for comparison with estimated cumulative proportion infected
 serotracker_data = fread("../serotracker_data/SeroTracker Serosurveys Reporting Prevalence.csv")

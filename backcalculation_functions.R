@@ -1,3 +1,12 @@
+# Functions for getting min and max age from age group string
+get_min_age = function(x){
+    as.numeric(sub("-.*","",sub("\\+|<","-",x)))  
+} 
+
+get_max_age = function(x){
+    as.numeric(sub(".*-","",sub("\\+|<","-",x)))    
+}
+
 VE = function(x, given = 0){
     (x - given) / (1 - given)
 }
@@ -130,9 +139,21 @@ read_death_data = function(source_deaths="coverage"){
     }
 }
 
-# Functions for getting min and max age from age group string
-get_min_age = function(x) as.numeric(sub("-.*","",sub("\\+|<","-",x)))
-get_max_age = function(x) as.numeric(sub(".*-","",sub("\\+|<","-",x)))
+get_data = function(url,ft="csv",dir_out,fnm){
+    if (ft=="csv"){
+        x = read.csv(url,na.strings="")
+    } else if (ft=="tsv"){
+        x = read.delim(url,na.strings="")
+    }
+    setDT(x)
+    dir.create(dir_out,recursive = T)
+    if (ft=="csv"){
+        write.csv(x,paste0(dir_out,fnm),row.names=F)
+    } else if (ft=="tsv"){
+        write.table(x,paste0(dir_out,fnm),sep="\t",row.names=F)
+    }
+    return(x)
+}
 
 divide_na = function(x,y){
     if (!is.na(y)){
