@@ -93,7 +93,7 @@ calculate_remaining_burden = function(fnm){
     return(list(rem_burden_dt=rem_burden_dt,ovrl_rem_burden_dt=ovrl_rem_burden_dt))
 }
 
-plot_remaining_burden = function(rem_burden_dt){
+plot_remaining_burden = function(rem_burden_dt,ovrl_rem_burden_dt){
     # Plot vaccine coverage pyramids
     # p1 = ggplot(melt(rem_burden_dt,measure.vars = c("pop_prop_u","pop_prop_v")),aes(x=value,y=age_group_model,alpha=variable)) +
     #     geom_col(position = "stack") +

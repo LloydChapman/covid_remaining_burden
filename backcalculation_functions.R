@@ -7,6 +7,27 @@ get_max_age = function(x){
     as.numeric(sub(".*-","",sub("\\+|<","-",x)))    
 }
 
+# construct a delay distribution following a gamma distribution with mean mu and shape parameter shape.
+cm_delay_gamma = function(mu, shape, t_max, t_step)
+{
+    scale = mu / shape;
+    t_points = seq(0, t_max, by = t_step);
+    heights = pgamma(t_points + t_step/2, shape, scale = scale) - 
+        pgamma(pmax(0, t_points - t_step/2), shape, scale = scale);
+    return (data.table(t = t_points, p = heights / sum(heights)))
+}
+
+# construct a delay distribution following a lognormal distribution with true mean mu and coefficient of variation cv.
+cm_delay_lnorm = function(mu, cv, t_max, t_step)
+{
+    meanlog = log(mu / sqrt(1 + cv^2));
+    sdlog = sqrt(log(1 + cv^2));
+    t_points = seq(0, t_max, by = t_step);
+    heights = plnorm(t_points + t_step/2, meanlog, sdlog) - 
+        plnorm(pmax(0, t_points - t_step/2), meanlog, sdlog);
+    return (data.table(t = t_points, p = heights / sum(heights)))
+}
+
 VE = function(x, given = 0){
     (x - given) / (1 - given)
 }
@@ -139,7 +160,7 @@ read_death_data = function(source_deaths="coverage"){
     }
 }
 
-get_data = function(url,ft="csv",dir_out,fnm){
+get_data = function(url,ft,dir_out,fnm){
     if (ft=="csv"){
         x = read.csv(url,na.strings="")
     } else if (ft=="tsv"){
@@ -1524,7 +1545,9 @@ process_seroprevalence_data = function(sero_data){
     return(sero_data)
 }
 
-pct = function(x) as.numeric(str_replace_all(x, "%", "")) / 100
+pct = function(x){
+    as.numeric(str_replace_all(x, "%", "")) / 100  
+} 
 
 plot_output = function(fnm,ecdc_cases_by_age,sero_data){
     load(fnm)
