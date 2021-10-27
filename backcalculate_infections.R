@@ -80,6 +80,9 @@ theme_set(cowplot::theme_cowplot(font_size = 10) + theme(strip.background = elem
 # Set source of age-stratified death data
 source_deaths = "coverage"
 
+# Set deconvolution method
+method = "ride"
+
 # Set age groups
 agegroups = c("0-39","40-49","50-59","60-69","70-79","80+") #c("0-9","10-19","20-29","30-39","40-49","50-59","60-69","70-79","80+")
 min_ages = get_min_age(agegroups)
@@ -152,8 +155,10 @@ Ab_delay2 = 14 # delay after 2nd dose in days
 # 
 
 
-dt = process_data(source_deaths,country_iso_codes,pop,Ab_delay1,Ab_delay2,ve_params,dir_out)
-
+out = process_data(source_deaths,country_iso_codes,pop,Ab_delay1,Ab_delay2,vrnt_prop,ve_params,dir_out)
+dt = out$dt
+vrnt_prop = out$vrnt_prop
+rm(out)
 
 # 
 # BACKCALCULATION
@@ -181,7 +186,6 @@ dDeath = dDeath/sum(dDeath)
 frlty_idx = 3.8
 
 ## Backcalculate IFR-scaled infections
-method = "ride"
 out = run_backcalculation(dt,dDeath,dIncub,frlty_idx,method = method)
 backcalc_dt = out$backcalc_dt
 backcalc_samps = out$backcalc_samps
@@ -189,8 +193,9 @@ backcalc_dt_non_ltc = out$backcalc_dt_non_ltc
 backcalc_samps_non_ltc = out$backcalc_samps_non_ltc
 backcalc_dt_ltc = out$backcalc_dt_ltc
 backcalc_samps_ltc = out$backcalc_samps_ltc
-
 rm(out)
+
+save.image(paste0(dir_out,"backcalculation_output.RData"))
 
 # Calculate 95% credible intervals
 out = calc_exposures_and_infections_CI(backcalc_dt_non_ltc,backcalc_samps_non_ltc,dIncub)
@@ -201,7 +206,6 @@ out = calc_exposures_and_infections_CI(backcalc_dt_ltc,backcalc_samps_ltc,dIncub
 backcalc_dt_ltc = out$dt
 exposures_samps_ltc = out$exposures_samps
 infections_samps_ltc = out$infections_samps
-
 rm(out)
 
 # Calculate overall exposures 

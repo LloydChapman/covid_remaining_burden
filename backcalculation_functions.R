@@ -1156,18 +1156,19 @@ construct_data_table = function(agegroups,deaths,pop,cols,ltc_deaths,vax,Ab_dela
     #                      prop_vrnt2*(1-ed_vb2i2)*(1-em_vb2d2) +
     #                      prop_vrnt3*(1-ed_vb2i3)*(1-em_vb2d3))*ifr)]
     
+    # Calculate cumulative proportion vaccinated
+    dt[,cum_prop_v:=pmin(cum_prop_va_1+cum_prop_vb_1,1)] # cap at 1, so IFR can't go negative
     # Calculate IFR over time
     # dt[,ifr_t := ifr]
-    dt[,cum_prop_v:=cum_prop_va_1+cum_prop_vb_1]
-    dt[,ifr_t:=pmax((1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v)+(1-ei)*cum_prop_v/(1-ei*cum_prop_v)*(1-ed)*(1-em))*ifr,0)] # set to 0 where IFR is negative for older age groups for Iceland (due to cum_prop_v>1), as IFR can't be negative
+    dt[,ifr_t:=(1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v)+(1-ei)*cum_prop_v/(1-ei*cum_prop_v)*(1-ed)*(1-em))*ifr]
     # dt[,ifr_t := (1-cum_prop_va-cum_prop_vb)*ifr + cum_prop_va*ifr_va + cum_prop_vb*ifr_vb]
     # dt[,ifr_t := (1-cum_prop_va-cum_prop_vb)*(prop_vrnt+prop_vrnt2+prop_vrnt3)*ifr + 
     #        cum_prop_va*ifr_va + 
     #        cum_prop_vb*ifr_vb]
     
     # # Calculate uncertainty bounds on time-varying IFR
-    # dt[,ifr_t_lb:=pmax((1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v)+(1-ei)*cum_prop_v/(1-ei*cum_prop_v)*(1-ed)*(1-em))*ifr_lb,0)]
-    # dt[,ifr_t_ub:=pmax((1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v)+(1-ei)*cum_prop_v/(1-ei*cum_prop_v)*(1-ed)*(1-em))*ifr_ub,0)]
+    # dt[,ifr_t_lb:=(1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v)+(1-ei)*cum_prop_v/(1-ei*cum_prop_v)*(1-ed)*(1-em))*ifr_lb]
+    # dt[,ifr_t_ub:=(1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v)+(1-ei)*cum_prop_v/(1-ei*cum_prop_v)*(1-ed)*(1-em))*ifr_ub]
     
     # Plot population-weighted average IFR over time for all countries
     print(ggplot(dt[,.(ifr_t=sum(ifr_t*population)/sum(population)),by=.(country,date)],
@@ -1617,8 +1618,8 @@ plot_output = function(fnm,ecdc_cases_by_age,sero_data){
             age_grp = agegroups[j]
             # cum_exp_samps[[k]] = t(apply(exposures_samps[[k]],1,cumsum))
             # Calculate proportions of infections that are among unvaccinated individuals
-            prop_exp_u = dt[country==cntry & age_group==age_grp,1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v)]
-            cum_exp_u_samps[[k]] = t(apply(t(t(exposures_samps[[k]]*prop_exp_u)),1,cumsum))
+            p_exp_u = dt[country==cntry & age_group==age_grp,1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v)]
+            cum_exp_u_samps[[k]] = t(apply(t(t(exposures_samps[[k]]*p_exp_u)),1,cumsum))
             backcalc_dt[country==cntry & age_group==age_grp,`:=`(cum_exp_u_q95l=apply(cum_exp_u_samps[[k]],2,function(x) quantile(x,probs = 0.025)),
                                                                  cum_exp_u_q95u=apply(cum_exp_u_samps[[k]],2,function(x) quantile(x,probs = 0.975)))] #cum_exp_med=apply(cum_exp_samps[[k]],2,function(x) quantile(x,probs = 0.5)),
         }
@@ -1781,7 +1782,7 @@ calc_init_condns = function(inc_dt,vax_dt_wide,agegroups_model,covy_dt,vrnt_prop
     # prev_dt[,`:=`(q=(1-ei)*(1-ed),r=(1-ei)*(ed-et),s=(1-ei)*et)]
     
     # Calculate cumulative proportion vaccinated with either type A or type B vaccine
-    prev_dt[,cum_prop_v:=cum_prop_va_1+cum_prop_vb_1]
+    prev_dt[,cum_prop_v:=pmin(cum_prop_va_1+cum_prop_vb_1,1)] # cap at 1
     
     # Calculate numbers vaccinated
     # TODO - update this to include first doses

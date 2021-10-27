@@ -13,7 +13,7 @@ library(stringr)
 
 source("backcalculation_functions.R")
 
-process_data = function(source_deaths,country_iso_codes,pop,Ab_delay1,Ab_delay2,ve_params,dir_out){
+process_data = function(source_deaths,country_iso_codes,pop,Ab_delay1,Ab_delay2,vrnt_prop,ve_params,dir_out){
     # DEATH DATA
     
     # Read in WHO death data
@@ -79,7 +79,7 @@ process_data = function(source_deaths,country_iso_codes,pop,Ab_delay1,Ab_delay2,
     ifr = fread(datapath("IFR_by_age_ODriscoll.csv"))
     
     # VARIANT DATA
-    
+
     # Read in ECDC variant data
     # ecdc_vrnt_data = fread("../ecdc_data/ecdc_variant_data.csv")
     ecdc_vrnt_data = get_data("https://opendata.ecdc.europa.eu/covid19/virusvariant/csv","csv",
@@ -196,5 +196,5 @@ process_data = function(source_deaths,country_iso_codes,pop,Ab_delay1,Ab_delay2,
     plot_variant_proportions(vrnt_prop[country %in% dt[,unique(country)]],vrnt_data[country %in% dt[,unique(country)]])
     ggsave(paste0(dir_out,"vrnt_prop_over_time.png"),width = 7.5,height = 6)
     
-    return(dt)
+    return(list(dt=dt,vrnt_prop=vrnt_prop))
 }
