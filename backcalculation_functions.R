@@ -150,6 +150,23 @@ get_vaccine_efficacies = function(){
 
 }
 
+download_death_data = function(source_deaths="ined"){
+    age_strat_data_path = paste0("../",source_deaths,"_data/")
+    dir.create(age_strat_data_path,recursive = T)
+    datapath = function(x) paste0(age_strat_data_path,x)
+    if (source_deaths=="coverage"){
+        # Download data from OSF
+        tbl = osf_retrieve_file("9dsfk")
+        osf_download(tbl, path = age_strat_data_path, conflicts = "overwrite")
+        out10_tbl = osf_retrieve_file("43ucn")
+        osf_download(out10_tbl, path = age_strat_data_path, conflicts = "overwrite")
+    } else if (source_deaths=="ined"){
+        fnm = "AgeSex.zip"
+        download.file("https://www.ined.fr/fichier/rte/166/Page%20Data/Pooled%20Datasets/AgeSex.zip",datapath(fnm))
+        unzip(datapath(fnm),exdir = age_strat_data_path)
+    }
+}
+
 read_death_data = function(source_deaths="coverage"){
     if (source_deaths=="coverage"){
         deaths_raw = fread(cmd = "unzip -cq ../coverage_data/Output_10.zip", skip = 3)
@@ -240,8 +257,8 @@ split_deaths = function(deaths,who_deaths,cntry,start_date,end_date,agg_age_grou
     return(deaths1)
 }
 
-clean_ined_death_data = function(ined_deaths,who_deaths,cols){
-    deaths = copy(ined_deaths) 
+clean_ined_death_data = function(deaths_raw,who_deaths,cols){
+    deaths = copy(deaths_raw) 
         
     # # Number of datasets per country
     # deaths[,length(unique(excelsheet)),by=.(country)]
@@ -252,6 +269,9 @@ clean_ined_death_data = function(ined_deaths,who_deaths,cols){
     # deaths[,unique(age_group)]
     # # by country
     # deaths[,table(country,age_group)]
+    
+    # Change country name for USA to match WHO deaths data
+    deaths[country=="United States of America",country:="United States"]
     
     # Change names
     setnames(deaths,sub("cum_deaths","cum_death",cols),cols)
@@ -301,12 +321,13 @@ clean_ined_death_data = function(ined_deaths,who_deaths,cols){
     deaths = deaths[,lapply(.SD,sum),.SDcols=cols,by=.(region,country,country_no,excelsource,excelsheet,age_group,death_reference_date,death_reference_date_type,date)]
     
     min_dates = deaths[,.(date=min(date)),by=.(country)]
+    max_dates = deaths[,.(date=max(date)),by=.(country)]
     countries = deaths[,unique(country)]
     total_deaths_list = vector("list",length(countries))
     cols3 = c("country","date","deaths_total")
     for (i in 1:length(countries)){
         cntry = countries[i]
-        tmp = who_deaths[country==cntry & date<min_dates[country==cntry,date],..cols3]
+        tmp = who_deaths[country==cntry & (date<min_dates[country==cntry,date] | date>max_dates[country==cntry,date]),..cols3]
         setnames(tmp,"deaths_total","cum_deaths_both")
         tmp[,age_group:="Total"]
         total_deaths_list[[i]] = tmp
@@ -316,7 +337,18 @@ clean_ined_death_data = function(ined_deaths,who_deaths,cols){
     
     for (i in 1:length(countries)){
         cntry = countries[i]
-        deaths = split_deaths(deaths,who_deaths,cntry,who_deaths[country==cntry,min(date)],min_dates[country==cntry,date]-1,Inf,cols)
+        if (cntry %in% who_deaths[,unique(country)]){
+            # Fill in early deaths for each country by scaling the cumulative number of 
+            # deaths up to the first date with disaggregated age groups for each age 
+            # group by the distribution of the overall number of daily deaths in the WHO
+            # data over time up to that point
+            deaths = split_deaths(deaths,who_deaths,cntry,who_deaths[country==cntry,min(date)],min_dates[country==cntry,date]-1,Inf,cols)
+            # Fill in recent deaths for each country by scaling the cumulative number of 
+            # deaths up to the last date with disaggregated age groups for each age 
+            # group by the distribution of the overall number of daily deaths in the WHO
+            # data over time since then
+            deaths = split_deaths(deaths,who_deaths,cntry,max_dates[country==cntry,date]+1,who_deaths[country==cntry,max(date)],Inf,cols,direction = "forward")
+        }
     }
     
     # Exclude totals
@@ -327,8 +359,8 @@ clean_ined_death_data = function(ined_deaths,who_deaths,cols){
     setorder(deaths,country,date,age_group)
 }
 
-clean_coverage_death_data = function(coverage_deaths,who_deaths,cols){
-    deaths = copy(coverage_deaths)
+clean_coverage_death_data = function(deaths_raw,who_deaths,cols){
+    deaths = copy(deaths_raw)
     
     # Change variable names to lower case
     names(deaths) = tolower(names(deaths))
@@ -490,8 +522,8 @@ process_variant_data = function(vrnt_data){
 process_cog_variant_data = function(cog_vrnt_data){
     cog_vrnt_data1 = copy(cog_vrnt_data)
     cog_vrnt_data1[,vrnt:="Other"]
-    cog_vrnt_data1[Lineage=="B.1.1.7",vrnt:="Alpha"]
-    cog_vrnt_data1[Lineage %in% c("B.1.617.2","AY.4","AY.5","AY.6","AY.9"),vrnt:="Delta"]
+    cog_vrnt_data1[Lineage=="B.1.1.7" | grepl("Q.",Lineage),vrnt:="Alpha"]
+    cog_vrnt_data1[Lineage=="B.1.617.2" | grepl("AY.",Lineage),vrnt:="Delta"]
     # Exclude sequences with unknown lineage from 2021-08-14 counts, as number is very high
     cog_vrnt_data1 = cog_vrnt_data1[!(WeekEndDate==as.Date("2021-08-14") & Lineage=="None")]
     vrnt_dataENG = CJ(date = cog_vrnt_data1[,unique(WeekEndDate)], vrnt = cog_vrnt_data1[,unique(vrnt)])
@@ -594,11 +626,17 @@ clean_ecdc_vaccination_data = function(ecdc_vax,country_iso_codes){
     vax = vax[!(TargetGroup %in% c("HCW","LTCF"))]
     vax[,age_group:=sub("_","-",sub("Age|1_Age","",TargetGroup))]
     
+    # Store early data for total vaccinations in Romania for use later
+    tmp = vax[country=="Romania" & age_group=="ALL" & YearWeekISO<="2021-W21",.(country,country_code2=ReportingCountry,year_week_iso=YearWeekISO,date,age_group,vaccine=Vaccine,first=FirstDose,second=SecondDose)]
+    tmp[,type:=fifelse(vaccine %in% c("COM","MOD"),"vb",fifelse(vaccine!="UNK","va","vu"))]
+    tmp = tmp[,.(first = sum(first), second = sum(second)), by = setdiff(names(tmp),c("vaccine","first","second"))]
+    tmp[,`:=`(p_first=first/sum(first),p_second=second/sum(second)),by=.(type)]
+    
     # Drop data disaggregated by age for those <18 for now and data aggregated for 
     # <60 and 60+
     # TODO - revisit this
     # print(vax[age_group=="UNK",sum(FirstDose+SecondDose+UnknownDose),by=.(ReportingCountry)])
-    vax = vax[!(age_group %in% c("0-4","5-9","10-14","15-17","<60","60+","ALL"))]
+    vax = vax[!(age_group %in% c("0-4","5-9","10-14","15-17","<60","60+"))]
     vax[age_group=="<18", age_group := "0-17"]
     
     # Lose unneeded variables
@@ -628,16 +666,94 @@ clean_ecdc_vaccination_data = function(ecdc_vax,country_iso_codes){
     # Sum by vaccine type
     vax = vax[,.(first = sum(first), second = sum(second)), by = setdiff(names(vax),c("vaccine","first","second"))] #,population
     
+    # Split cumulative vaccinations by age group up to 2021-05-24 in Romania by
+    # distribution of total vaccinations over time up to that point
+    vaxROM = CJ(year_week_iso=vax[country=="Romania" & year_week_iso<="2021-W21",unique(year_week_iso)],age_group=vax[!(age_group %in% c("ALL","UNK")),unique(age_group)],type=vax[,unique(type)])
+    vaxROM = merge(vaxROM,tmp[,!c("age_group","first","second")],by=c("year_week_iso","type"))
+    vaxROM = merge(vaxROM,vax[country=="Romania" & year_week_iso=="2021-W21" & age_group!="ALL",.(age_group,type,first,second)],by=c("age_group","type"))
+    vaxROM[,`:=`(first=p_first*first,second=p_second*second)]
+    vaxROM[,`:=`(p_first=NULL,p_second=NULL)]
+    
+    # Bind with main data table and overwrite first week that has finer age groups
+    # as values are cumulative vaccinations up to that point
+    vax = rbind(vax[!(country=="Romania" & year_week_iso=="2021-W21" & age_group %in% vaxROM[,unique(age_group)])],vaxROM[year_week_iso<="2021-W21"])
+    
+    # Get rollout start dates
+    start_dates = vax[sum(first)!=0,.(start_date=min(date)),by=.(country)]
+    vax = merge(vax,start_dates,by="country")
+    # Create rollout week variable
+    vax[,rollout_week:=as.numeric(date-start_date)/7+1]
+    
+    # Split into all ages and age-stratified data
+    vax_all_ages = vax[age_group=="ALL"]
+    vax_all_ages[,`:=`(cum_first=cumsum(first),cum_second=cumsum(second)),by=.(country,type)]
+    vax = vax[age_group!="ALL"]
+    
+    # Calculate mean coverage by age from first week of rollout in each country:
+    # Sum doses over vaccine types
+    agg_vax = vax[,.(first=sum(first),second=sum(second)),by=.(country,rollout_week,age_group)]
+    # Get vaccination age groups
+    agegroups_vax = vax[,sort(unique(age_group))]
+    agegroups_vax = agegroups_vax[agegroups_vax!="UNK"]
+    min_ages_vax = get_min_age(agegroups_vax)
+    # Add populations to data table
+    pop_vax = pop[,.(country,age,population,age_group=cut(age,c(min_ages_vax,Inf),labels=agegroups_vax,right=F))]
+    pop_vax = pop_vax[,.(population=sum(population)),by=.(country,age_group)]
+    agg_vax = merge(agg_vax,pop_vax,by=c("country","age_group"))
+    # Calculate coverage by country, age and rollout week
+    agg_vax[,`:=`(cum_prop_first=cumsum(first)/population,
+                  cum_prop_second=cumsum(second)/population),by=.(country,age_group)]
+    # Calculate mean coverage by age and rollout week across countries
+    agg_vax = agg_vax[,.(cum_prop_first=mean(cum_prop_first),
+                         cum_prop_second=mean(cum_prop_second)),by=.(age_group,rollout_week)]
+    
+    # Make data table of total vaccinations split by population-weighted mean 
+    # coverage by age and rollout week across all countries
+    vax1 = merge(agg_vax,vax_all_ages[,!"age_group"],by="rollout_week",allow.cartesian=T)
+    vax1 = merge(vax1,pop_vax,by=c("country","age_group"))
+    cols = c("first","second","cum_first","cum_second")
+    vax1[,(cols):=lapply(.SD,as.numeric),.SDcols=cols]
+    vax1[,`:=`(cum_first=population*cum_prop_first/sum(population*cum_prop_first)*cum_first,
+               cum_second=population*cum_prop_second/sum(population*cum_prop_second)*cum_second),
+         by=.(country,rollout_week,type)]
+    vax1[,`:=`(cum_prop_first=NULL,cum_prop_second=NULL)]
+    vax1[,`:=`(first=pmax(diff(c(0,cum_first)),0),
+               second=pmax(diff(c(0,cum_second)),0)),by=.(country,age_group,type)]
+    
+    # Bind countries without age-stratified data into main data table
+    vax = rbind(vax,vax1[!(country %in% vax[,unique(country)]),!c("population","cum_first","cum_second")])
+    vax[,`:=`(start_date=NULL,rollout_week=NULL)]
+    
+    # Calculate proportion of vaccine types over all countries over time for each age group and dose
+    # vax_type = vax[type!="vu",lapply(.SD,function(x) sum(x,na.rm=T)),.SDcols = c("first","second"),by=.(date,age_group,type)]
+    # vax_type[,`:=`(p_first=first/sum(first),p_second=second/sum(second)),by=.(date,age_group)]
+    # Calculate proportion of vaccine types in each country over time for each age group and dose
+    vax_type = vax[type!="vu",.(type,p_first=first/sum(first,na.rm=T),p_second=second/sum(second,na.rm=T)),by=.(country,date,age_group)]
+    # Calculate mean proportion over all countries
+    cols1 = c("p_first","p_second")
+    vax_type = vax_type[,lapply(.SD,function(x) mean(x,na.rm=T)),.SDcols=cols1,by=.(date,age_group,type)]
+    # Normalise so that proportions add up to 1
+    vax_type[,(cols1):=lapply(.SD,function(x) x/sum(x,na.rm=T)),.SDcols=cols1,by=.(date,age_group)]
+    setnafill(vax_type,fill=0,cols=cols1)
+    
     # Split vaccines of unknown type according to average proportion of each type in
     # other countries (should really also be by age group) FOR NOW - can correct with OWID data
     vax_wide = dcast(vax,... ~ type,value.var = c("first","second"))
-    cols3 = paste0(rep(c("first","second"),each=3),"_",c("va","vb","vu"))
-    vax_wide[,(cols3):=lapply(.SD,as.numeric),.SDcols=cols3]
-    vax_wide[!is.na(first_vu),`:=`(first_va=fifelse(is.na(first_va),first_vu*vax_wide[is.na(first_vu),mean(first_va/(first_va+first_vb),na.rm=T)],first_va+first_vu*vax_wide[is.na(first_vu),mean(first_va/(first_va+first_vb),na.rm=T)]),
-                             first_vb=fifelse(is.na(first_vb),first_vu*vax_wide[is.na(first_vu),mean(first_vb/(first_va+first_vb),na.rm=T)],first_vb+first_vu*vax_wide[is.na(first_vu),mean(first_vb/(first_va+first_vb),na.rm=T)]))]
-    vax_wide[!is.na(second_vu),`:=`(second_va=fifelse(is.na(second_va),second_vu*vax_wide[is.na(second_vu),mean(second_va/(second_va+second_vb),na.rm=T)],second_va+second_vu*vax_wide[is.na(second_vu),mean(second_va/(second_va+second_vb),na.rm=T)]),
-                             second_vb=fifelse(is.na(second_vb),second_vu*vax_wide[is.na(second_vu),mean(second_vb/(second_va+second_vb),na.rm=T)],second_vb+second_vu*vax_wide[is.na(second_vu),mean(second_vb/(second_va+second_vb),na.rm=T)]))]
-    vax_wide[,`:=`(first_vu=NULL,second_vu=NULL)]
+    cols2 = paste0(rep(c("first","second"),each=3),"_",c("va","vb","vu"))
+    vax_wide[,(cols2):=lapply(.SD,as.numeric),.SDcols=cols2]
+    
+    vax_type_wide = dcast(vax_type,... ~ type,value.var = c("p_first","p_second"))
+    vax_wide = merge(vax_wide,vax_type_wide,by=c("date","age_group"),all.x=T)
+    
+    # vax_wide[!is.na(first_vu),`:=`(first_va=fifelse(is.na(first_va),first_vu*vax_wide[is.na(first_vu),mean(first_va/(first_va+first_vb),na.rm=T)],first_va+first_vu*vax_wide[is.na(first_vu),mean(first_va/(first_va+first_vb),na.rm=T)]),
+    #                          first_vb=fifelse(is.na(first_vb),first_vu*vax_wide[is.na(first_vu),mean(first_vb/(first_va+first_vb),na.rm=T)],first_vb+first_vu*vax_wide[is.na(first_vu),mean(first_vb/(first_va+first_vb),na.rm=T)]))]
+    # vax_wide[!is.na(second_vu),`:=`(second_va=fifelse(is.na(second_va),second_vu*vax_wide[is.na(second_vu),mean(second_va/(second_va+second_vb),na.rm=T)],second_va+second_vu*vax_wide[is.na(second_vu),mean(second_va/(second_va+second_vb),na.rm=T)]),
+    #                          second_vb=fifelse(is.na(second_vb),second_vu*vax_wide[is.na(second_vu),mean(second_vb/(second_va+second_vb),na.rm=T)],second_vb+second_vu*vax_wide[is.na(second_vu),mean(second_vb/(second_va+second_vb),na.rm=T)]))]
+    vax_wide[!is.na(first_vu),`:=`(first_va=fifelse(is.na(first_va),p_first_va*first_vu,first_va+p_first_va*first_vu),
+                                   first_vb=fifelse(is.na(first_vb),p_first_vb*first_vu,first_vb+p_first_vb*first_vu))]
+    vax_wide[!is.na(second_vu),`:=`(second_va=fifelse(is.na(second_va),p_second_va*second_vu,second_va+p_second_va*second_vu),
+                                   second_vb=fifelse(is.na(second_vb),p_second_vb*second_vu,second_vb+p_second_vb*second_vu))]
+    vax_wide[,`:=`(first_vu=NULL,second_vu=NULL,p_first_va=NULL,p_first_vb=NULL,p_second_va=NULL,p_second_vb=NULL)]
     
     # Melt to long format
     # vax = melt(vax_wide,measure.vars = patterns(first="first",second="second"),variable.name = "type")
@@ -659,7 +775,7 @@ clean_ecdc_vaccination_data = function(ecdc_vax,country_iso_codes){
     print(vax[,.(count=sum(count)), by = .(age_group)]) # only small % so ignore FOR NOW
     
     # return(list(vax=vax,num_type=num_type))
-    return(vax)
+    return(list(vax=vax,vax_type=vax_type))
 }
 
 process_phe_vaccination_data = function(vaccPHE,agegroups_model){
@@ -675,7 +791,7 @@ process_phe_vaccination_data = function(vaccPHE,agegroups_model){
     }
     vaxENG = rbindlist(vaxENG,fill=T)
     vaxENG = vaxENG[,lapply(.SD,sum),.SDcols=c("va1","va2","vb1","vb2"),by=.(date,age_group)]
-    vaxENG[,`:=`(country="England",year_week_iso=date2ISOweek(date))]
+    vaxENG[,country:="England"]
     vaxENG_long = melt(vaxENG,measure.vars = c("va1","va2","vb1","vb2"),variable.name = "type",value.name = "count")
     vaxENG_long[,`:=`(type=substr(type,1,2),dose=substr(type,3,3))]
     # vaxENG_long[,dose:=fifelse(dose==1,"first","second")]
@@ -692,7 +808,52 @@ process_phe_vaccination_data = function(vaccPHE,agegroups_model){
     # Restrict to dates for which there is data for both first and second doses given Ab development delays
     vaxENG_long = vaxENG_long[between(date,vaxENG[,min(date)]-14,vaxENG[,max(date)]-28)]
     
+    # Add ISO week
+    vaxENG_long[,year_week_iso:=date2ISOweek(date)]
+    
     return(vaxENG_long)
+}
+
+process_gov_uk_vaccination_data = function(vaccENG,vax_type){
+    # Convert column type
+    vaccENG[,date:=as.IDate(date)]
+    
+    # Extract required columns from raw data and rename
+    vaxENG = vaccENG[,.(date,age_group=sub("_","-",age),country=areaName,
+                        first=newPeopleVaccinatedFirstDoseByVaccinationDate,
+                        second=newPeopleVaccinatedSecondDoseByVaccinationDate)]
+    
+    # Get vaccination age groups
+    agegroups_vax = vax_type[,sort(unique(age_group))]
+    agegroups_vax = agegroups_vax[agegroups_vax!="UNK"]
+    min_ages_vax = get_min_age(agegroups_vax)
+    vaxENG[,age_group_vax:=cut(get_min_age(age_group),c(min_ages_vax,Inf),labels=agegroups_vax,right=F)]
+    
+    # Cast vaccine type frequency data table to wide format
+    vax_type_wide = dcast(vax_type,... ~ type,value.var = c("p_first","p_second"))
+    # Merge with vaccination data table
+    vaxENG = merge(vaxENG,vax_type_wide,by.x=c("date","age_group_vax"),by.y=c("date","age_group"),all.x=T)
+    vaxENG[,age_group_vax:=NULL]
+    
+    # Remove incorrect early proportions of different vaccine types
+    vaxENG[date<as.Date("2020-12-21"),`:=`(p_first_va=NA,p_first_vb=NA,p_second_va=NA,p_second_vb=NA)]
+    # Forward fill and back fill missing proportions of vaccine types for each age group with nearest observations
+    cols=c("p_first_va","p_first_vb","p_second_va","p_second_vb")
+    vaxENG[,(cols):=lapply(.SD,function(x) nafill(x,"locf")),.SDcols=cols,by=.(age_group)]
+    vaxENG[,(cols):=lapply(.SD,function(x) nafill(x,"nocb")),.SDcols=cols,by=.(age_group)]
+    
+    # Calculate number of first and second doses of each vaccine type
+    vaxENG[,`:=`(first_va=p_first_va*first,first_vb=p_first_vb*first,
+                 second_va=p_second_va*second,second_vb=p_second_vb*second)]
+    vaxENG[,(c("first","second",cols)):=NULL]
+    
+    # Melt to long format
+    vaxENG_long = melt(vaxENG,measure.vars = c("first_va","first_vb","second_va","second_vb"),variable.name = "dose",value.name = "count")
+    vaxENG_long[,`:=`(type=sub("[a-z]+_","",dose),dose=sub("_[a-z]+","",dose))]
+    vaxENG_long[,dose:=fifelse(dose=="first",1,2)]
+    
+    # Add ISO week
+    vaxENG_long[,year_week_iso:=date2ISOweek(date)]
 }
 
 construct_vax_data_table = function(vax,dates,agegroups,pop){
@@ -915,7 +1076,7 @@ construct_data_table = function(agegroups,deaths,pop,cols,ltc_deaths,vax,Ab_dela
         scale_y_log10() +
         facet_wrap(~country))
     # new deaths
-    print(ggplot(deaths_dt[country!="United States"],aes(x=date,y=deaths_i_both,group=age_group,color=age_group)) +
+    print(ggplot(deaths_dt[country %in% c("Ecuador","United States")],aes(x=date,y=deaths_i_both,group=age_group,color=age_group)) +
         geom_line() +
         facet_wrap(~country))
     
@@ -1860,7 +2021,7 @@ calc_init_condns = function(inc_dt,vax_dt_wide,agegroups_model,covy_dt,vrnt_prop
     return(prev_dt)
 }
 
-calc_rem_burden = function(prev_dt,ihr,ifr_dt){
+calc_rem_burden = function(prev_dt,ihr,ifr_dt,frlty_idx){
     # max_dates = prev_dt[,.(date=max(date)),by=.(country)]
     # 
     # rem_burden_dt = merge(max_dates,prev_dt,by=c("country","date"),all.x=T)
@@ -1872,14 +2033,19 @@ calc_rem_burden = function(prev_dt,ihr,ifr_dt){
     
     # Calculate maximum number of hospitalisations and deaths among remaining 
     # susceptibles if they were all exposed now
-    rem_burden_dt[,`:=`(cum_hosp_u=y*ihr*S,cum_deaths_u=y*ifr*S)]
+    rem_burden_dt[,p_exp_ltc:=exposures_ltc/exposures]
+    rem_burden_dt[,f:=(1-p_exp_ltc)+p_exp_ltc*frlty_idx]
+    rem_burden_dt[,`:=`(cum_hosp_u=y*f*ihr*S,
+                        cum_deaths_u=y*f*ifr*S)]
     # Calculate maximum number of hospitalisations and deaths among vaccinated
     # individuals if they were all exposed now
     # rem_burden_dt[,exposures_v:=fifelse(nS_E!=0,pmin(nV_E/nS_E*S,V),0)]
     # rem_burden_dt[,`:=`(cum_hosp_v=y*(1-eh)*ihr*exposures_v,cum_deaths_v=y*(1-em)*ifr*exposures_v)]
-    rem_burden_dt[,`:=`(cum_hosp_v=y*(1-ei)*(1-ed)*(1-eh)*ihr*V,cum_deaths_v=y*(1-ei)*(1-ed)*(1-em)*ifr*V)]
+    rem_burden_dt[,`:=`(cum_hosp_v=y*f*(1-ei)*(1-ed)*(1-eh)*ihr*V,
+                        cum_deaths_v=y*f*(1-ei)*(1-ed)*(1-em)*ifr*V)]
     # Calculate maximum number of hospitalisations and deaths among previously infected
-    rem_burden_dt[,`:=`(cum_hosp_i=y*(1-ei)*(1-ed)*(1-eh)*ihr*R,cum_deaths_i=y*(1-ei)*(1-ed)*(1-em)*ifr*R)]
+    rem_burden_dt[,`:=`(cum_hosp_i=y*f*(1-ei)*(1-ed)*(1-eh)*ihr*R,
+                        cum_deaths_i=y*f*(1-ei)*(1-ed)*(1-em)*ifr*R)]
     
     # Calculate total maximum hospitalisations and deaths
     rem_burden_dt[,`:=`(cum_hosp=cum_hosp_u+cum_hosp_v+cum_hosp_i,cum_deaths=cum_deaths_u+cum_deaths_v+cum_deaths_i)]

@@ -7,12 +7,16 @@ library(scales)
 
 source("./backcalculation_functions.R")
 
-calculate_remaining_burden = function(fnm){
+calculate_remaining_burden = function(fnm,agegroups_model,pop,ifr,frlty_idx){
     # Load initial conditions calculation output
-    load(fnm)
-
+    # load(fnm)
+    prev_dt = readRDS(fnm)
+    
     # Set plot theme
     theme_set(cowplot::theme_cowplot(font_size = 10) + theme(strip.background = element_blank()))
+    
+    # Get minimum ages of age groups
+    min_ages_model = get_min_age(agegroups_model)
     
     # Infection hospitalisation rate (derived from Salje et al., Science)
     ihr = data.table(age = 0:85,ihr = exp(-7.37 + 0.068 * 0:85) / (1 + exp(-7.37 + 0.068 * 0:85)))
@@ -25,7 +29,7 @@ calculate_remaining_burden = function(fnm){
     setnames(ifr_dt,"age_group","age_group_model")
     
     # Calculate remaining burden of hospitalisations and deaths
-    res = calc_rem_burden(prev_dt,ihr,ifr_dt)
+    res = calc_rem_burden(prev_dt,ihr,ifr_dt,frlty_idx)
     
     # Calculate 
     # cols = c("population","cum_prop_v",

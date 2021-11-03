@@ -1,6 +1,7 @@
 library(data.table)
 library(qs)
 library(ggplot2)
+library(osfr)
 library(covidregionaldata)
 library(ISOweek)
 library(lubridate)
@@ -25,39 +26,6 @@ source("./process_data.R")
 source("./derive_initial_conditions.R")
 source("./calculate_remaining_burden.R")
 
-# TODO:
-# - sort out alignment of dates for deaths data and vaccination data - currently
-# only works because max date in vax data + Ab_delay is after max date in deaths
-# data - DONE
-# - update to latest data - DOING
-# - switch delay distributions to those in covidm - DONE
-# - use country names or two-letter country iso codes throughout - DONE (using country names)
-# - use age-dep vaccination data from OWID for countries missing age breakdown
-# - resolve remaining issues with death time series, e.g. where data is missing
-# scale cumulative deaths by distribution of total deaths over that time period - DONE
-# - combine data for England, Wales and Scotland - INCLUDED ENGLAND
-# - separate into LTC and non-LTC deaths - DONE, NEED TO CORRECT
-#   - don't apply split to France data as it already excludes care home deaths - DONE
-#   - use mean proportion of deaths that are among LTC residents for countries
-#   missing LTC death data - DONE
-# - use sampling approach to get integer numbers of deaths rather than 
-# multiplying by proportions and ending up with decimals (so that data is in 
-# correct format for RIDE)?
-# - make proportion of vaccine type time dependent - DONE
-# - include time-dependent variant proportions in vaccine efficacy - DONE
-# - use country-specific IFRs?
-# - correct dates for vaccination data to be end of ISO week - no, start of ISO week is fine
-# - sort out Finland data - interpolate with WHO data? - DONE
-# - review/correct proportions for LTC deaths, esp. France - DONE
-# - include multiple vaccine doses - DONE
-# - fix issue with early vaccination data for 70-79yo for Norway?
-# - shift infection time series when plotting against seroprevalence data to account for delay from infection to seroconversion (~20-21 days) - DONE
-# - download and save data automatically in script rather than manually - DONE
-# - fix issue with disaggregation of deaths in raw data for Ireland if it's included
-# - fix issue with IFR for Iceland (from jump in ei due to missing vaccine type data for 80+ year olds) if it's included
-# - rerun to correct mistake with England vax schedule data - DONE
-# - incorporate uncertainty in IFR into output
-
 
 # 
 # SETUP
@@ -77,17 +45,24 @@ dir.create(dir_out,recursive = T)
 # Set plot theme
 theme_set(cowplot::theme_cowplot(font_size = 10) + theme(strip.background = element_blank()))
 
+# Download death data
+download_death_data("coverage")
+download_death_data("ined")
+
 # Set source of age-stratified death data
 source_deaths = "coverage"
 
 # Set deconvolution method
 method = "ride"
 
-# Set age groups
+# Set age groups for deconvolution
 agegroups = c("0-39","40-49","50-59","60-69","70-79","80+") #c("0-9","10-19","20-29","30-39","40-49","50-59","60-69","70-79","80+")
 min_ages = get_min_age(agegroups)
 max_ages = get_max_age(agegroups)
 max_ages[is.na(max_ages)] = Inf
+
+# Set age groups to disaggregate deconvolution output over
+agegroups_model = factor(agegroups,levels = agegroups)
 
 # Get country iso codes
 covid_data_path = "./fitting_data/"
@@ -119,7 +94,9 @@ agegroups_pop = popUK[,unique(age)]
 min_ages_pop = get_min_age(agegroups_pop)
 popENG[,age_group:=cut(age,c(min_ages_pop,Inf),labels=agegroups_pop,right=F)]
 popENG = merge(popENG,popUK,by.x=c("country","age_group"),by.y=c("name","age"))
-popENG = popENG[,.(country,age,female=1000*f/5,male=1000*m/5)]
+popENG = popENG[,.(country,age,
+                   female=1000*fifelse(age<90,f/5,f/10),
+                   male=1000*fifelse(age<90,m/5,m/10))]
 popENG[,population:=female+male]
 
 # Bind to UN population data table
@@ -149,16 +126,21 @@ ve_params = get_vaccine_efficacies()
 Ab_delay1 = 28 # delay after 1st dose in days
 Ab_delay2 = 14 # delay after 2nd dose in days
 
+# Frailty index for relative frailty of LTC residents compared to general population
+frlty_idx = 3.8
 
 # 
 # DATA PROCESSING
 # 
 
 
-out = process_data(source_deaths,country_iso_codes,pop,Ab_delay1,Ab_delay2,vrnt_prop,ve_params,dir_out)
+out = process_data(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,Ab_delay2,vrnt_prop,ve_params,dir_out)
 dt = out$dt
+vax = out$vax
+vaxENG = out$vaxENG
 vrnt_prop = out$vrnt_prop
 rm(out)
+
 
 # 
 # BACKCALCULATION
@@ -182,9 +164,6 @@ dDeath = disc_conv(cm_delay_gamma(2.5, 2.5, t_max = 60, t_step = 1)$p,cm_delay_g
 dIncub = dIncub/sum(dIncub)
 dDeath = dDeath/sum(dDeath)
 
-# Frailty index for relative frailty of LTC residents compared to general population
-frlty_idx = 3.8
-
 ## Backcalculate IFR-scaled infections
 out = run_backcalculation(dt,dDeath,dIncub,frlty_idx,method = method)
 backcalc_dt = out$backcalc_dt
@@ -194,8 +173,6 @@ backcalc_samps_non_ltc = out$backcalc_samps_non_ltc
 backcalc_dt_ltc = out$backcalc_dt_ltc
 backcalc_samps_ltc = out$backcalc_samps_ltc
 rm(out)
-
-save.image(paste0(dir_out,"backcalculation_output.RData"))
 
 # Calculate 95% credible intervals
 out = calc_exposures_and_infections_CI(backcalc_dt_non_ltc,backcalc_samps_non_ltc,dIncub)
@@ -250,24 +227,34 @@ save.image(paste0(dir_out,"backcalculation_output.RData"))
 plot_output(paste0(dir_out,"backcalculation_output.RData"),ecdc_cases_by_age,sero_data)
 
 
-# #
-# # INITIAL CONDITIONS CALCULATION
-# #
-# 
-# 
-# derive_initial_conditions(paste0(dir_out,"backcalculation_output.RData"))
-# 
-# 
-# #
-# # REMAINING BURDEN CALCULATION
-# #
-# 
-# 
-# # Calculate remaining burden of hospitalisations and deaths assuming that entire
-# # population is exposed now
-# out = calculate_remaining_burden(paste0(dir_out,"init_cond_output.RData"))
-# rem_burden_dt = out$rem_burden_dt
-# ovrl_rem_burden_dt = out$ovrl_rem_burden_dt
-# 
-# # Plot
-# plot_remaining_burden(rem_burden_dt,ovrl_rem_burden_dt)
+#
+# INITIAL CONDITIONS CALCULATION
+#
+
+
+# Calculate current numbers of susceptible and uninfected vaccinated individuals in each 
+# age group in each country
+prev_dt = derive_initial_conditions(paste0(dir_out,"backcalculation_output.RData"),agegroups_model)
+
+# Save
+saveRDS(prev_dt,paste0(dir_out,"init_cond_output.RDS"))
+
+
+#
+# REMAINING BURDEN CALCULATION
+#
+
+
+# Calculate remaining burden of hospitalisations and deaths assuming that entire
+# population is exposed now
+out = calculate_remaining_burden(paste0(dir_out,"init_cond_output.RDS"),agegroups_model,pop,frlty_idx)
+rem_burden_dt = out$rem_burden_dt
+ovrl_rem_burden_dt = out$ovrl_rem_burden_dt
+
+# Save
+saveRDS(rem_burden_dt,paste0(dir_out,"rem_burden_output.RDS"))
+saveRDS(ovrl_rem_burden_dt,paste0(dir_out,"ovrl_rem_burden_output.RDS"))
+
+
+# Plot
+plot_remaining_burden(rem_burden_dt,ovrl_rem_burden_dt)

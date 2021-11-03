@@ -10,7 +10,7 @@ source("./backcalculation_functions.R")
 # registerDoParallel(cores = detectCores()-1)
 registerDoParallel(cores = 4)
 
-derive_initial_conditions = function(fnm){
+derive_initial_conditions = function(fnm,agegroups_model){
     # Load backcalculation output
     load(fnm)
     
@@ -20,9 +20,8 @@ derive_initial_conditions = function(fnm){
     
     # Set plot theme
     theme_set(cowplot::theme_cowplot(font_size = 10) + theme(strip.background = element_blank()))
-
-    # Set age groups to be the same as in deconvolution for the time being
-    agegroups_model = factor(agegroups,levels = agegroups)
+    
+    # Get minimum ages of age groups
     min_ages_model = get_min_age(agegroups_model)
     
     # Read in age-dependent symptomatic fraction
@@ -86,15 +85,20 @@ derive_initial_conditions = function(fnm){
     # prev_list = vector("list",nrow(exposures_samps[[1]]))
     # TODO - split this into non-LTC and LTC exposures (as they have different IFRs)
     tstart = Sys.time()
-    prev_list = foreach(i=1:nrow(exposures_samps[[1]])) %dopar% {
+    prev_list = foreach(i=1:100) %dopar% {#nrow(exposures_samps[[1]])) %dopar% {
         exposures_vec = unlist(lapply(exposures_samps,"[",i,))
+        exposures_ltc_vec = unlist(lapply(exposures_samps_ltc,"[",i,))
         
         # Merge with deconvolution output
         # N.B. duplicates exposures within same age_group
-        inc_dt = merge(base_dt,backcalc_dt[,.(country,age_group,date,exposures=exposures_vec)],by=c("country","age_group","date"))
+        backcalc_dt[,exposures:=exposures_vec]
+        backcalc_dt[age_group %in% agegroups[max_ages>60],exposures_ltc:=exposures_ltc_vec]
+        inc_dt = merge(base_dt,backcalc_dt[,.(country,age_group,date,exposures,exposures_ltc)],by=c("country","age_group","date"))
         
         # Split exposures by population fraction
-        inc_dt[,exposures:=exposures*population/sum(population),by=.(country,age_group,date)]
+        inc_dt[,`:=`(exposures=exposures*population/sum(population),
+                     exposures_ltc=exposures_ltc*population/sum(population)),
+               by=.(country,age_group,date)]
         
         # # Plot
         # ggplot(inc_dt,aes(x=date,y=exposures,group=age_group_model,color=age_group_model)) +
@@ -111,14 +115,18 @@ derive_initial_conditions = function(fnm){
     # Bind list into data table
     prev_dt = rbindlist(prev_list,idcol="sample")
     
-    # Remove backcalculation output
-    rm(backcalc_dt,backcalc_dt_non_ltc,backcalc_dt_ltc,
-       backcalc_samps,backcalc_samps_non_ltc,backcalc_samps_ltc,
-       exposures_samps,exposures_samps_non_ltc,exposures_samps_ltc,
-       infections_samps,infections_samps_non_ltc,infections_samps_ltc)
-    
-    # Save
-    save.image(paste0(dir_out,"init_cond_output.RData"))    
+    # # Remove backcalculation output
+    # rm(backcalc_dt,backcalc_dt_non_ltc,backcalc_dt_ltc,
+    #    backcalc_samps,backcalc_samps_non_ltc,backcalc_samps_ltc,
+    #    exposures_samps,exposures_samps_non_ltc,exposures_samps_ltc,
+    #    infections_samps,infections_samps_non_ltc,infections_samps_ltc)
+    # 
+    # # Remove functions
+    # rm(list=lsf.str())
+    # 
+    # # Save
+    # save(list=ls(all.names=T),file=paste0(dir_out,"init_cond_output.RData"),envir=environment())
+    return(prev_dt)
 }
 
 

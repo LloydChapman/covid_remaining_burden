@@ -13,7 +13,7 @@ library(stringr)
 
 source("backcalculation_functions.R")
 
-process_data = function(source_deaths,country_iso_codes,pop,Ab_delay1,Ab_delay2,vrnt_prop,ve_params,dir_out){
+process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,Ab_delay2,vrnt_prop,ve_params,dir_out){
     # DEATH DATA
     
     # Read in WHO death data
@@ -37,8 +37,21 @@ process_data = function(source_deaths,country_iso_codes,pop,Ab_delay1,Ab_delay2,
     # Read in age-stratified death data
     deaths_raw = read_death_data(source_deaths)
     
+    # If using the COVerAGE data, then also read in and clean INED data to add 
+    # countries missing from COVerAGE data
+    if (source_deaths=="coverage"){
+        deaths_raw_ined = read_death_data("ined")
+        deaths_ined = clean_death_data("ined",deaths_raw_ined,who_deaths)
+    }
+    
     # Clean age-stratified death data
     deaths = clean_death_data(source_deaths,deaths_raw,who_deaths)
+    
+    # Use INED data for the Netherlands and Romania as they are missing from 
+    # COVerAGE data
+    deaths = rbind(deaths[!(country %in% c("Netherlands","Romania")),!"code"],
+                   deaths_ined[country %in% c("Netherlands","Romania"),
+                               .(country,date,age_group,cum_deaths_both,cum_deaths_female,cum_deaths_male)])
     
     # Plot to check
     ggplot(deaths[,.(date,deaths_both=c(0,diff(cum_deaths_both))),by=.(country,age_group)],aes(x=date,y=deaths_both,group=age_group,color=age_group)) + 
@@ -59,19 +72,35 @@ process_data = function(source_deaths,country_iso_codes,pop,Ab_delay1,Ab_delay2,
     # out = clean_ecdc_vaccination_data(ecdc_vax,country_iso_codes)
     # vax = out$vax
     # num_type = out$num_type
-    vax = clean_ecdc_vaccination_data(ecdc_vax,country_iso_codes)
+    out = clean_ecdc_vaccination_data(ecdc_vax,country_iso_codes)
+    vax = out$vax
+    vax_type = out$vax_type
     
-    # Read in processed Public Health England (PHE) vaccination data
-    vaccPHE = readRDS("../phe_data/vax-covidm20211002121137.rds")
+    # # Read in processed Public Health England (PHE) vaccination data
+    # vaccPHE = readRDS("../phe_data/vax-covidm20211002121137.rds")
+    # 
+    # # List of age groups in covidm
+    # agegroups_model = c("0-4","5-9","10-14","15-19","20-24","25-29","30-34","35-39",
+    #                     "40-44","45-49","50-54","55-59","60-64","65-69","70-74","75+")
+    # agegroups_model = factor(agegroups_model,levels = agegroups_model)
+    # min_ages_model = get_min_age(agegroups_model)
+    # 
+    # # Process to same format as cleaned ECDC data
+    # vaxENG = process_phe_vaccination_data(vaccPHE,agegroups_model)
     
-    # List of age groups in covidm
-    agegroups_model = c("0-4","5-9","10-14","15-19","20-24","25-29","30-34","35-39",
-                        "40-44","45-49","50-54","55-59","60-64","65-69","70-74","75+")
-    agegroups_model = factor(agegroups_model,levels = agegroups_model)
-    min_ages_model = get_min_age(agegroups_model)
+    # Read in UK government vaccination data for England
+    vaccENG = get_data("https://api.coronavirus.data.gov.uk/v2/data?areaType=nation&areaCode=E92000001&metric=vaccinationsAgeDemographics&format=csv",
+                       "csv","../gov_uk_data/",paste0("nation_",date_fitting-1,".csv")) # date of download file is previous day
     
-    # Process to same format as cleaned ECDC data
-    vaxENG = process_phe_vaccination_data(vaccPHE,agegroups_model)
+    # Process to same format as cleaned ECDC vaccination data
+    vaxENG = process_gov_uk_vaccination_data(vaccENG,vax_type)
+    
+    # # Plot
+    # ggplot(vaxENG[,.(type,prop=count/sum(count,na.rm=T)),by=.(date,age_group,dose)][type=="vb"],
+    #        aes(x=date,y=prop,group=factor(dose),color=factor(dose))) +
+    #     geom_line() + facet_wrap(~age_group)
+    # ggplot(vaxENG[type=="vb" & dose==1],aes(x=date,y=count,color=age_group)) + 
+    #     geom_line()
     
     # IFR
     
@@ -150,7 +179,7 @@ process_data = function(source_deaths,country_iso_codes,pop,Ab_delay1,Ab_delay2,
     
     # Drop data for Iceland as there are too few deaths for deconvolution and for 
     # Ireland, Latvia and Romania as it is very incomplete
-    dt = dt[!(country %in% c("Iceland","Ireland","Latvia","Romania"))]
+    dt = dt[!(country %in% c("Iceland","Ireland","Latvia"))]
     
     # Plot deaths
     plot_deaths(dt)
@@ -196,5 +225,5 @@ process_data = function(source_deaths,country_iso_codes,pop,Ab_delay1,Ab_delay2,
     plot_variant_proportions(vrnt_prop[country %in% dt[,unique(country)]],vrnt_data[country %in% dt[,unique(country)]])
     ggsave(paste0(dir_out,"vrnt_prop_over_time.png"),width = 7.5,height = 6)
     
-    return(list(dt=dt,vrnt_prop=vrnt_prop))
+    return(list(dt=dt,vax=vax,vaxENG=vaxENG,vrnt_prop=vrnt_prop))
 }
