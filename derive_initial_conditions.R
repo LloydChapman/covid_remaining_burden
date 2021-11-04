@@ -10,7 +10,7 @@ source("./backcalculation_functions.R")
 # registerDoParallel(cores = detectCores()-1)
 registerDoParallel(cores = 4)
 
-derive_initial_conditions = function(fnm,agegroups_model){
+derive_initial_conditions = function(fnm){
     # Load backcalculation output
     load(fnm)
     
@@ -24,11 +24,7 @@ derive_initial_conditions = function(fnm,agegroups_model){
     # Get minimum ages of age groups
     min_ages_model = get_min_age(agegroups_model)
     
-    # Read in age-dependent symptomatic fraction
-    covid_scenario = qread(datapath("2-linelist_both_fit_fIa0.5-rbzvih.qs"));
-    colsy = names(covid_scenario)[grep("y_",names(covid_scenario))]
-    covy = colMeans(covid_scenario[,..colsy])
-    
+    # Make data table for age-dependent symptomatic fraction
     min_ages_y = as.integer(sub("y_","",names(covy)))
     covy = data.table(age_group=c(paste0(min_ages_y[1:(length(min_ages_y)-1)],"-",min_ages_y[2:length(min_ages_y)]-1),paste0(min_ages_y[length(min_ages_y)],"+")),y=covy)
     # Make data table for age-dependent symptomatic fraction
@@ -85,7 +81,7 @@ derive_initial_conditions = function(fnm,agegroups_model){
     # prev_list = vector("list",nrow(exposures_samps[[1]]))
     # TODO - split this into non-LTC and LTC exposures (as they have different IFRs)
     tstart = Sys.time()
-    prev_list = foreach(i=1:100) %dopar% {#nrow(exposures_samps[[1]])) %dopar% {
+    prev_list = foreach(i=1:nrow(exposures_samps[[1]])) %dopar% {
         exposures_vec = unlist(lapply(exposures_samps,"[",i,))
         exposures_ltc_vec = unlist(lapply(exposures_samps_ltc,"[",i,))
         

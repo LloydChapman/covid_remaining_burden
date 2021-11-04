@@ -115,9 +115,9 @@ dIa = cm_delay_gamma(5.0, 4.0, t_max = 15, t_step = 1)$p
 # Get age-dependent susceptibility and symptomatic fraction
 covid_scenario = qread(datapath("2-linelist_both_fit_fIa0.5-rbzvih.qs"));
 colsu = names(covid_scenario)[grep("u_",names(covid_scenario))]
-covu = unname(rep(colMeans(covid_scenario[,..colsu]), each = 2))
+covu = colMeans(covid_scenario[,..colsu])
 colsy = names(covid_scenario)[grep("y_",names(covid_scenario))]
-covy = unname(rep(colMeans(covid_scenario[,..colsy]), each = 2))
+covy = colMeans(covid_scenario[,..colsy])
 
 # Get vaccine efficacies
 ve_params = get_vaccine_efficacies()
@@ -125,6 +125,9 @@ ve_params = get_vaccine_efficacies()
 # Set delays from vaccination to development of Ab
 Ab_delay1 = 28 # delay after 1st dose in days
 Ab_delay2 = 14 # delay after 2nd dose in days
+
+# Read in ensemble IFR estimate from O'Driscoll et al Nature 2020
+ifr = fread(datapath("IFR_by_age_ODriscoll.csv"))
 
 # Frailty index for relative frailty of LTC residents compared to general population
 frlty_idx = 3.8
@@ -134,7 +137,7 @@ frlty_idx = 3.8
 # 
 
 
-out = process_data(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,Ab_delay2,vrnt_prop,ve_params,dir_out)
+out = process_data(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,Ab_delay2,ifr,ve_params,dir_out)
 dt = out$dt
 vax = out$vax
 vaxENG = out$vaxENG
@@ -220,6 +223,9 @@ ecdc_cases_by_age = get_data("https://opendata.ecdc.europa.eu/covid19/agecasesna
 serotracker_data = fread("../serotracker_data/SeroTracker Serosurveys Reporting Prevalence.csv")
 sero_data = process_seroprevalence_data(serotracker_data)
 
+# Remove functions
+rm(list=lsf.str())
+
 # Save output
 save.image(paste0(dir_out,"backcalculation_output.RData"))
 
@@ -234,7 +240,7 @@ plot_output(paste0(dir_out,"backcalculation_output.RData"),ecdc_cases_by_age,ser
 
 # Calculate current numbers of susceptible and uninfected vaccinated individuals in each 
 # age group in each country
-prev_dt = derive_initial_conditions(paste0(dir_out,"backcalculation_output.RData"),agegroups_model)
+prev_dt = derive_initial_conditions(paste0(dir_out,"backcalculation_output.RData"))
 
 # Save
 saveRDS(prev_dt,paste0(dir_out,"init_cond_output.RDS"))
@@ -247,7 +253,7 @@ saveRDS(prev_dt,paste0(dir_out,"init_cond_output.RDS"))
 
 # Calculate remaining burden of hospitalisations and deaths assuming that entire
 # population is exposed now
-out = calculate_remaining_burden(paste0(dir_out,"init_cond_output.RDS"),agegroups_model,pop,frlty_idx)
+out = calculate_remaining_burden(paste0(dir_out,"init_cond_output.RDS"),agegroups_model,pop,ifr,frlty_idx)
 rem_burden_dt = out$rem_burden_dt
 ovrl_rem_burden_dt = out$ovrl_rem_burden_dt
 

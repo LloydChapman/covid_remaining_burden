@@ -686,12 +686,12 @@ clean_ecdc_vaccination_data = function(ecdc_vax,country_iso_codes){
     
     # Split into all ages and age-stratified data
     vax_all_ages = vax[age_group=="ALL"]
-    vax_all_ages[,`:=`(cum_first=cumsum(first),cum_second=cumsum(second)),by=.(country,type)]
+    # vax_all_ages[,`:=`(cum_first=cumsum(first),cum_second=cumsum(second)),by=.(country,type)]
     vax = vax[age_group!="ALL"]
     
     # Calculate mean coverage by age from first week of rollout in each country:
     # Sum doses over vaccine types
-    agg_vax = vax[,.(first=sum(first),second=sum(second)),by=.(country,rollout_week,age_group)]
+    agg_vax = vax[!(country %in% c("Bulgaria","Croatia","Estonia","Latvia","Poland","Romania","Slovakia","Slovenia")),.(first=sum(first),second=sum(second)),by=.(country,rollout_week,age_group)]
     # Get vaccination age groups
     agegroups_vax = vax[,sort(unique(age_group))]
     agegroups_vax = agegroups_vax[agegroups_vax!="UNK"]
@@ -700,30 +700,46 @@ clean_ecdc_vaccination_data = function(ecdc_vax,country_iso_codes){
     pop_vax = pop[,.(country,age,population,age_group=cut(age,c(min_ages_vax,Inf),labels=agegroups_vax,right=F))]
     pop_vax = pop_vax[,.(population=sum(population)),by=.(country,age_group)]
     agg_vax = merge(agg_vax,pop_vax,by=c("country","age_group"))
-    # Calculate coverage by country, age and rollout week
-    agg_vax[,`:=`(cum_prop_first=cumsum(first)/population,
-                  cum_prop_second=cumsum(second)/population),by=.(country,age_group)]
+    # # Calculate coverage by country, age and rollout week
+    # agg_vax[,`:=`(cum_prop_first=cumsum(first)/population,
+    #               cum_prop_second=cumsum(second)/population),by=.(country,age_group)]
+    # # Calculate mean coverage by age and rollout week across countries
+    # agg_vax = agg_vax[,.(cum_prop_first=mean(cum_prop_first),
+    #                      cum_prop_second=mean(cum_prop_second)),by=.(age_group,rollout_week)]
+    agg_vax[,`:=`(prop_first=first/population,
+                  prop_second=second/population),by=.(country,age_group)]
     # Calculate mean coverage by age and rollout week across countries
-    agg_vax = agg_vax[,.(cum_prop_first=mean(cum_prop_first),
-                         cum_prop_second=mean(cum_prop_second)),by=.(age_group,rollout_week)]
+    agg_vax = agg_vax[,.(prop_first=mean(prop_first),
+                         prop_second=mean(prop_second)),by=.(age_group,rollout_week)]
     
     # Make data table of total vaccinations split by population-weighted mean 
     # coverage by age and rollout week across all countries
     vax1 = merge(agg_vax,vax_all_ages[,!"age_group"],by="rollout_week",allow.cartesian=T)
     vax1 = merge(vax1,pop_vax,by=c("country","age_group"))
-    cols = c("first","second","cum_first","cum_second")
+    # cols = c("first","second","cum_first","cum_second")
+    cols = c("first","second")
     vax1[,(cols):=lapply(.SD,as.numeric),.SDcols=cols]
-    vax1[,`:=`(cum_first=population*cum_prop_first/sum(population*cum_prop_first)*cum_first,
-               cum_second=population*cum_prop_second/sum(population*cum_prop_second)*cum_second),
+    # # vax1[,`:=`(cum_first=population*cum_prop_first/sum(population*cum_prop_first)*cum_first,
+    # #            cum_second=population*cum_prop_second/sum(population*cum_prop_second)*cum_second),
+    # #      by=.(country,rollout_week,type)]
+    # vax1[,`:=`(cum_first=cum_prop_first/sum(cum_prop_first)*cum_first,
+    #            cum_second=cum_prop_second/sum(cum_prop_second)*cum_second),
+    #      by=.(country,rollout_week,type)]
+    vax1[,`:=`(first=population*prop_first/sum(population*prop_first)*first,
+               second=population*prop_second/sum(population*prop_second)*second),
          by=.(country,rollout_week,type)]
-    vax1[,`:=`(cum_prop_first=NULL,cum_prop_second=NULL)]
-    vax1[,`:=`(first=pmax(diff(c(0,cum_first)),0),
-               second=pmax(diff(c(0,cum_second)),0)),by=.(country,age_group,type)]
+    # vax1[,`:=`(cum_prop_first=NULL,cum_prop_second=NULL)]
+    vax1[,`:=`(prop_first=NULL,prop_second=NULL)]
+    # # vax1[,`:=`(first=pmax(diff(c(0,cum_first)),0),
+    # #            second=pmax(diff(c(0,cum_second)),0)),by=.(country,age_group,type)]
+    # vax1[,`:=`(first=diff(c(0,cum_first)),
+    #            second=diff(c(0,cum_second))),by=.(country,age_group,type)]
     
     # Bind countries without age-stratified data into main data table
-    vax = rbind(vax,vax1[!(country %in% vax[,unique(country)]),!c("population","cum_first","cum_second")])
+    # vax = rbind(vax,vax1[!(country %in% vax[,unique(country)]),!c("population","cum_first","cum_second")])
+    vax = rbind(vax,vax1[!(country %in% vax[,unique(country)]),!"population"])
     vax[,`:=`(start_date=NULL,rollout_week=NULL)]
-    
+
     # Calculate proportion of vaccine types over all countries over time for each age group and dose
     # vax_type = vax[type!="vu",lapply(.SD,function(x) sum(x,na.rm=T)),.SDcols = c("first","second"),by=.(date,age_group,type)]
     # vax_type[,`:=`(p_first=first/sum(first),p_second=second/sum(second)),by=.(date,age_group)]
@@ -1961,16 +1977,20 @@ calc_init_condns = function(inc_dt,vax_dt_wide,agegroups_model,covy_dt,vrnt_prop
     # Merge with age-dependent symptomatic fraction
     prev_dt = merge(prev_dt,covy_dt,by=c("country","age_group_model"))
     
-    # Calculate number leaving susceptible compartment at each time point
-    prev_dt[,diffS:=-nS_E-nS_V]
-    # Calculate number of susceptibles at each time point ensuring it can't go
-    # negative
+    # Calculate number leaving susceptible compartment at each time point and 
+    # change in number in vaccinated state
+    prev_dt[,`:=`(diffS=-nS_E-nS_V,diffV=nS_V-nV_E-nV_L)]
+    # Calculate number of susceptibles and number in vaccinated state at each 
+    # time point ensuring it can't go negative
     setorder(prev_dt,country,age_group_model,date)
-    prev_dt[,S:=pmax(population+cumsum(diffS),0),by=.(country,age_group_model)]
+    prev_dt[,`:=`(S=pmax(population+cumsum(diffS),0),
+                  V=pmax(cumsum(diffV),0)),by=.(country,age_group_model)]
     
-    # Where susceptibles are fully depleted, set exposures and vaccinations among susceptibles to 0
+    # Where susceptibles or individuals in vaccinated state are fully depleted, 
+    # set exposures and vaccinations among susceptibles to 0
     # print(prev_dt[S==0,.(nS_E=sum(nS_E)),by=.(country)])
     prev_dt[S==0,`:=`(nS_E=0,nS_V=0)]
+    prev_dt[V==0,`:=`(nV_E=0,nV_L=0)]
     
     # Convolve exposures with latent period distribution to get infections
     prev_dt[,nE_I:=disc_conv(nS_E+nV_E,dE),by=.(country,age_group_model)]
@@ -1986,7 +2006,7 @@ calc_init_condns = function(inc_dt,vax_dt_wide,agegroups_model,covy_dt,vrnt_prop
     
     # Calculate differences in numbers entering and leaving compartments at each
     # time point
-    prev_dt[,`:=`(diffV=nS_V-nV_E-nV_L,#-nV_R,
+    prev_dt[,`:=`(#diffV=nS_V-nV_E-nV_L,#-nV_R,
                   diffE=nS_E+nV_E-nE_I,
                   diffL=nV_L-nL_Ia,
                   diffIp=nE_Ip-nIp_Is,
@@ -1995,9 +2015,11 @@ calc_init_condns = function(inc_dt,vax_dt_wide,agegroups_model,covy_dt,vrnt_prop
                   diffR=nIs_R+nIa_R)]#+nV_R)]
     
     # Calculate numbers in each compartment at each time point
-    cols1 = c("V","E","L","Ip","Is","Ia","R")
+    # cols1 = c("V","E","L","Ip","Is","Ia","R")
+    cols1 = c("E","L","Ip","Is","Ia","R")
     
     # Calculate numbers in each compartment at each time point
+    # prev_dt[,(cols1):=lapply(.SD,function(x) pmax(cumsum(x),0)),.SDcols=paste0("diff",cols1),by=.(country,age_group_model)] # pmax to stop numbers going negative
     prev_dt[,(cols1):=lapply(.SD,cumsum),.SDcols=paste0("diff",cols1),by=.(country,age_group_model)]
     
     # Remove difference columns

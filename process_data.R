@@ -13,7 +13,7 @@ library(stringr)
 
 source("backcalculation_functions.R")
 
-process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,Ab_delay2,vrnt_prop,ve_params,dir_out){
+process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,Ab_delay2,ifr,ve_params,dir_out){
     # DEATH DATA
     
     # Read in WHO death data
@@ -76,6 +76,22 @@ process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,
     vax = out$vax
     vax_type = out$vax_type
     
+    # # Checks on coverage in Germany and the Netherlands
+    # ggplot(vax[country=="Netherlands" & dose==1],aes(x=date,y=count,color=age_group)) + geom_line() + facet_wrap(~type)
+    # dates = seq.Date(vax[,min(date)],vax[,max(date)],by=1)
+    # agegroups_vax = vax[,unique(age_group)]
+    # agegroups_vax = agegroups_vax[agegroups_vax!="UNK"]
+    # vax_dt = construct_vax_data_table(vax,dates,agegroups_vax,pop)
+    # ggplot(vax_dt[,.(cum_prop=sum(cum_prop)),by=.(country,date,age_group,dose)][dose==1],aes(x=date,y=cum_prop,color=age_group)) +
+    #     geom_line() +
+    #     ylim(c(0,1)) +
+    #     facet_wrap(~country)
+    # ecdc_vax[ReportingCountry=="NL" & YearWeekISO<"2021-W41",.(first=sum(FirstDose),second=sum(SecondDose))]
+    # vax[country=="Netherlands",.(count=sum(count)),by=.(dose)]
+    # vax_dt[country=="Germany" & date==max(date),.(cum_prop=sum(cum_prop)),by=.(date,age_group,dose)]
+    # vax_dt[country=="Germany" & date==max(date) & (age_group %in% c("18-24","25-49","50-59")) & dose==1,.(cum_prop=2*sum(cum_prop*population)/sum(population))]
+    # vax_dt[country=="Germany" & date==max(date) & (age_group %in% c("60-69","70-79","80+")) & dose==1,.(cum_prop=2*sum(cum_prop*population)/sum(population))]
+    
     # # Read in processed Public Health England (PHE) vaccination data
     # vaccPHE = readRDS("../phe_data/vax-covidm20211002121137.rds")
     # 
@@ -101,11 +117,6 @@ process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,
     #     geom_line() + facet_wrap(~age_group)
     # ggplot(vaxENG[type=="vb" & dose==1],aes(x=date,y=count,color=age_group)) + 
     #     geom_line()
-    
-    # IFR
-    
-    # Read in ensemble IFR estimate from O'Driscoll et al Nature 2020
-    ifr = fread(datapath("IFR_by_age_ODriscoll.csv"))
     
     # VARIANT DATA
 
