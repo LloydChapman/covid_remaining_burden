@@ -1,0 +1,28 @@
+﻿Country ,Date ,Approach to measuring COVID-19 linked deaths in care homes C: confirmed P: probable,Total number of deaths linked to COVID-19,Number of deaths of care home residents linked to COVID-19,Number of deaths in care homes linked to COVID-19,Number of care home resident deaths as % of all COVID-19 deaths,Number of deaths in care homes as % of all COVID-19 deaths 
+Australia ,22/01/2021,C ,909,685,  ,75%,  
+Austria ,24/01/2021,C ,"7,328","3,243",  ,44%,  
+Belgium ,19/01/2021,C + P ,"20,457","11,722","8,854",57%,43%
+Canada  ,23/01/2021,C + P ,"18,974","11,114",  ,59%,  
+Denmark ,19/01/2021,C ,"1,837",719,  ,39%,  
+Finland ,22/01/2021,C ,644,  ,243,  ,33%
+France ,20/01/2021,C + P ,"71,342","30,395","21,646",43%,30%
+Germany ,22/01/2021,C ,"50,642","14,066",  ,28%,  
+Hong Kong ,25/01/2021,C ,169,32,0,19%,0%
+Hungary ,27/08/2020,C ,612,142,  ,23%,  
+Ireland ,13/12/2020,C + P ,"2,110",  ,"1,084",  ,51%
+Israel ,25/10/2020,C ,"2,404",861,  ,36%,  
+Netherlands ,15/01/2021,C ,"12,774","6,529", ,51%, 
+New Zealand ,12/01/2021,C + P ,25,  ,16,  ,64%
+Norway ,20/01/2021,C ,533,  ,318,  ,60%
+Portugal ,10/01/2021,Unclear ,"7,803","2,254",,29%,
+Singapore ,24/01/2021,C ,29,4,0,14%,0%
+Slovenia ,17/01/2021,C ,"3,371","1,875", ,56%,  
+South Korea ,07/09/2020,C ,336,27,0,8%,0%
+Spain ,22/01/2021,C + P ,"66,557","26,328",  ,40%,  
+Sweden  ,18/01/2021,C + P ,"9,949","4,656","4,249",47%,43%
+England (UK) ,15/01/2021,C + P ,"88,674","29,381","21,615",33%,24%
+Wales (UK) ,15/01/2021,C + P ,"5,884","1,470","1,267",25%,22%
+N. Ireland (UK) ,15/01/2021,C + P ,"2,124",862,642,41%,30%
+Scotland (UK) ,17/01/2021,C + P ,"7,448","3,266","2,867",44%,38%
+United Kingdom ,As above ,C + P ,"104,130","34,979","26,391",34%,25%
+United States ,07/01/2021,C + P ,"357,124","139,699",  ,39%,  
