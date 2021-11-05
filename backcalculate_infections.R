@@ -17,6 +17,7 @@ library(effects)
 library(doParallel)
 # library(truncnorm)
 library(cowplot)
+library(patchwork)
 library(stringr)
 
 source("./backcalculation_functions.R")
@@ -43,7 +44,7 @@ dir_out = paste0("./output/",date_fitting,"/")
 dir.create(dir_out,recursive = T)
 
 # Set plot theme
-theme_set(cowplot::theme_cowplot(font_size = 10) + theme(strip.background = element_blank()))
+theme_set(cowplot::theme_cowplot(font_size = 12) + theme(strip.background = element_blank()))
 
 # Download death data
 download_death_data("coverage")
@@ -143,6 +144,12 @@ vax = out$vax
 vaxENG = out$vaxENG
 vrnt_prop = out$vrnt_prop
 rm(out)
+
+# See how many doses have unknown age group
+print(vax[,sum(count)])
+print(vax[age_group!="UNK",sum(count)])
+print(vax[country %in% dt[,unique(country)],.(count=sum(count)), by = .(age_group)][,.(age_group,p_UNK=count/sum(count))]) # only small % so ignore FOR NOW
+print(vax[country %in% dt[,unique(country)],.(count=sum(count)),by=.(country,age_group)][,.(age_group,p_UNK=count/sum(count)),by=.(country)][age_group=="UNK"])
 
 
 # 
