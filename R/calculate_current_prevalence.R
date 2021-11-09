@@ -4,13 +4,13 @@ library(ggplot2)
 library(ISOweek)
 library(doParallel)
 
-source("./backcalculation_functions.R")
+source("./R/functions.R")
 
 # Register parallel backend
 # registerDoParallel(cores = detectCores()-1)
 registerDoParallel(cores = 4)
 
-derive_initial_conditions = function(fnm){
+calculate_current_prevalence = function(fnm,agegroups_model,covy,pop,Ab_delay1,Ab_delay2,vax,vaxENG,agegroups,vrnt_prop,ve_params,dE,dIp,dIs,dIa){
     # Load backcalculation output
     load(fnm)
     
@@ -37,7 +37,7 @@ derive_initial_conditions = function(fnm){
     # Change age groups
     covy_dt[,age_group_model:=cut(age,c(min_ages_model,Inf),labels=agegroups_model,right=F)]
     # Calculate population-weighted average symptomatic fraction
-    covy_dt = covy_dt[,.(y=sum(y*population)/sum(population)),by=.(country,age_group_model)]
+    covy_dt = covy_dt[!is.na(age_group_model),.(y=sum(y*population)/sum(population)),by=.(country,age_group_model)] # exclude values where age group is missing as ages are not included in the backcalculation output
     
     # Plot
     ggplot(covy_dt,aes(x=age_group_model,y=y,group=country,color=country)) + geom_line()
@@ -73,7 +73,12 @@ derive_initial_conditions = function(fnm){
     base_dt = CJ(country=backcalc_dt[,unique(country)],age=0:100,date=backcalc_dt[,unique(date)])
     base_dt = merge(base_dt,pop[,.(country,age,population)],by=c("country","age"),all.x=T)
     base_dt[,age_group_model:=cut(age,c(min_ages_model,Inf),labels=agegroups_model,right=F)]
-    base_dt = base_dt[,.(population=sum(population)),by=.(country,age_group_model,date)]
+    base_dt = base_dt[!is.na(age_group_model),.(population=sum(population)),by=.(country,age_group_model,date)] # exclude values where age group is missing as ages are not included in the backcalculation output
+    
+    # Get minimum and maximum ages of deconvolution age groups
+    min_ages = get_min_age(agegroups)
+    max_ages = get_max_age(agegroups)
+    max_ages[is.na(max_ages)] = Inf
     
     # Add deconvolution age groups to data table
     base_dt[,age_group:=cut(get_min_age(age_group_model),c(min_ages,Inf),labels=agegroups,right=F)]
@@ -103,7 +108,7 @@ derive_initial_conditions = function(fnm){
         
         # Calculate initial conditions
         # prev_list[[i]] = calc_init_condns(inc_dt,vax_dt_wide,agegroups_model,covy_dt,vrnt_prop,ve_params,dE,dIp,dIs,dIa)
-        calc_init_condns(inc_dt,vax_dt_wide,agegroups_model,covy_dt,vrnt_prop,ve_params,dE,dIp,dIs,dIa)
+        calc_curr_prev(inc_dt,vax_dt_wide,agegroups_model,covy_dt,vrnt_prop,ve_params,dE,dIp,dIs,dIa)
     }
     tend = Sys.time()
     print(tend-tstart)

@@ -20,12 +20,10 @@ library(cowplot)
 library(patchwork)
 library(stringr)
 
-source("./backcalculation_functions.R")
-# source("./initial_conditions_functions.R")
-# source("./simulation_functions.R")
-source("./process_data.R")
-source("./derive_initial_conditions.R")
-source("./calculate_remaining_burden.R")
+source("./R/functions.R")
+source("./R/process_data.R")
+source("./R/calculate_current_prevalence.R")
+source("./R/calculate_remaining_burden.R")
 
 
 # 
@@ -42,6 +40,10 @@ date_fitting = today()
 # Create directory to save output into
 dir_out = paste0("./output/",date_fitting,"/")
 dir.create(dir_out,recursive = T)
+
+# Create directory to save figures into
+dir_fig = "./figs/"
+dir.create(dir_fig)
 
 # Set plot theme
 theme_set(cowplot::theme_cowplot(font_size = 12) + theme(strip.background = element_blank()))
@@ -66,12 +68,12 @@ max_ages[is.na(max_ages)] = Inf
 agegroups_model = factor(agegroups,levels = agegroups)
 
 # Get country iso codes
-covid_data_path = "./fitting_data/"
-datapath = function(x) paste0(covid_data_path, x)
-country_iso_codes = readRDS(datapath("country_iso_codes.rds"))
+# covid_data_path = "./fitting_data/"
+# datapath = function(x) paste0(covid_data_path, x)
+country_iso_codes = readRDS("./data/country_iso_codes.rds")
 
 # Read in UN population data
-pop = qread("../un_data/unwpp_data.qs")
+pop = qread("./data/un_data/unwpp_data.qs")
 # Filter to 2020 estimates
 pop = pop[year==2020]
 setnames(pop,"total","population")
@@ -87,7 +89,7 @@ pop[country=="Venezuela (Bolivarian Republic of)",country:="Venezuela"]
 pop[country=="Viet Nam",country:="Vietnam"]
 
 # Get UK population
-popUK = readRDS(datapath("popNHS.rds"))
+popUK = readRDS("./data/popNHS.rds")
 
 # Make population data table for England
 popENG = CJ(country="England",age=0:100)
@@ -114,7 +116,7 @@ dIs = cm_delay_gamma(2.5, 4.0, t_max = 15, t_step = 1)$p
 dIa = cm_delay_gamma(5.0, 4.0, t_max = 15, t_step = 1)$p
 
 # Get age-dependent susceptibility and symptomatic fraction
-covid_scenario = qread(datapath("2-linelist_both_fit_fIa0.5-rbzvih.qs"));
+covid_scenario = qread("./data/2-linelist_both_fit_fIa0.5-rbzvih.qs")
 colsu = names(covid_scenario)[grep("u_",names(covid_scenario))]
 covu = colMeans(covid_scenario[,..colsu])
 colsy = names(covid_scenario)[grep("y_",names(covid_scenario))]
@@ -128,7 +130,7 @@ Ab_delay1 = 28 # delay after 1st dose in days
 Ab_delay2 = 14 # delay after 2nd dose in days
 
 # Read in ensemble IFR estimate from O'Driscoll et al Nature 2020
-ifr = fread(datapath("IFR_by_age_ODriscoll.csv"))
+ifr = fread("./data/IFR_by_age_ODriscoll.csv")
 
 # Frailty index for relative frailty of LTC residents compared to general population
 frlty_idx = 3.8
@@ -138,7 +140,7 @@ frlty_idx = 3.8
 # 
 
 
-out = process_data(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,Ab_delay2,ifr,ve_params,dir_out)
+out = process_data(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,Ab_delay2,ifr,ve_params,dir_fig)
 dt = out$dt
 vax = out$vax
 vaxENG = out$vaxENG
@@ -148,8 +150,10 @@ rm(out)
 # See how many doses have unknown age group
 print(vax[,sum(count)])
 print(vax[age_group!="UNK",sum(count)])
-print(vax[country %in% dt[,unique(country)],.(count=sum(count)), by = .(age_group)][,.(age_group,p_UNK=count/sum(count))]) # only small % so ignore FOR NOW
-print(vax[country %in% dt[,unique(country)],.(count=sum(count)),by=.(country,age_group)][,.(age_group,p_UNK=count/sum(count)),by=.(country)][age_group=="UNK"])
+print(vax[country %in% dt[,unique(country)],.(count=sum(count)), by = .(age_group)]
+      [,.(age_group,p_UNK=count/sum(count))]) # only small % so ignore FOR NOW
+print(vax[country %in% dt[,unique(country)],.(count=sum(count)),by=.(country,age_group)]
+      [,.(age_group,p_UNK=count/sum(count)),by=.(country)][age_group=="UNK"])
 
 
 # 
@@ -167,8 +171,10 @@ print(vax[country %in% dt[,unique(country)],.(count=sum(count)),by=.(country,age
 # od_mean = convert_to_nat_mean(od_params$mean,od_params$sd)
 # od_sd = convert_to_nat_sd(od_params$mean,od_params$sd)
 # dDeath = disc_conv(cm_delay_lnorm(ip_mean,ip_sd/ip_mean,t_max = 60,t_step = 1)$p,cm_delay_lnorm(od_mean,od_sd/od_mean,t_max = 60,t_step = 1)$p)
-dIncub = disc_conv(cm_delay_gamma(2.5, 2.5, t_max = 30, t_step = 1)$p,cm_delay_gamma(2.5, 4.0, t_max = 30, t_step = 1)$p)
-dDeath = disc_conv(cm_delay_gamma(2.5, 2.5, t_max = 60, t_step = 1)$p,cm_delay_gamma(15, 2.2, t_max = 60, t_step = 1)$p)
+dIncub = disc_conv(cm_delay_gamma(2.5, 2.5, t_max = 30, t_step = 1)$p,
+                   cm_delay_gamma(2.5, 4.0, t_max = 30, t_step = 1)$p)
+dDeath = disc_conv(cm_delay_gamma(2.5, 2.5, t_max = 60, t_step = 1)$p,
+                   cm_delay_gamma(15, 2.2, t_max = 60, t_step = 1)$p)
 
 # Normalise to ensure distributions sum to 1
 dIncub = dIncub/sum(dIncub)
@@ -214,30 +220,39 @@ for (i in 1:length(countries)){
             exposures_samps[[k]] = exposures_samps[[k]] + exposures_samps_ltc[[idx]]
             infections_samps[[k]] = infections_samps[[k]] + infections_samps_ltc[[idx]]
         }
-        backcalc_dt[country==cntry & age_group==age_grp,`:=`(exposures_dead_q95l=apply(backcalc_samps[[k]],2,function(x) quantile(x,probs = 0.025)),exposures_dead_q95u=apply(backcalc_samps[[k]],2,function(x) quantile(x,probs = 0.975)))]
-        backcalc_dt[country==cntry & age_group==age_grp,`:=`(exposures_q95l=apply(exposures_samps[[k]],2,function(x) quantile(x,probs = 0.025)),exposures_q95u=apply(exposures_samps[[k]],2,function(x) quantile(x,probs = 0.975)))]
-        backcalc_dt[country==cntry & age_group==age_grp,`:=`(infections_q95l=apply(infections_samps[[k]],2,function(x) quantile(x,probs = 0.025)),infections_q95u=apply(infections_samps[[k]],2,function(x) quantile(x,probs = 0.975)))]
+        backcalc_dt[country==cntry & age_group==age_grp,`:=`(
+            exposures_dead_q95l=apply(backcalc_samps[[k]],2,function(x) quantile(x,probs = 0.025)),
+            exposures_dead_q95u=apply(backcalc_samps[[k]],2,function(x) quantile(x,probs = 0.975)))]
+        backcalc_dt[country==cntry & age_group==age_grp,`:=`(
+            exposures_q95l=apply(exposures_samps[[k]],2,function(x) quantile(x,probs = 0.025)),
+            exposures_q95u=apply(exposures_samps[[k]],2,function(x) quantile(x,probs = 0.975)))]
+        backcalc_dt[country==cntry & age_group==age_grp,`:=`(
+            infections_q95l=apply(infections_samps[[k]],2,function(x) quantile(x,probs = 0.025)),
+            infections_q95u=apply(infections_samps[[k]],2,function(x) quantile(x,probs = 0.975)))]
     }
 }
 
+save(backcalc_dt,backcalc_dt_non_ltc,backcalc_dt_ltc,
+     backcalc_samps,backcalc_samps_non_ltc,backcalc_samps_ltc,
+     exposures_samps,exposures_samps_non_ltc,exposures_samps_ltc,
+     infections_samps,infections_samps_non_ltc,infections_samps_ltc,
+     file=paste0(dir_out,"backcalculation_output.RData"))
 
 # Plot output against age-stratified case data and seroprevalence data for validation
 # Read in ECDC age-stratified case data for comparison with inferred infection time series
 ecdc_cases_by_age = get_data("https://opendata.ecdc.europa.eu/covid19/agecasesnational/csv","csv",
-                             paste0("../ecdc_data/",date_fitting,"/"),"ecdc_cases_by_age.csv")
+                             paste0("./data/ecdc_data/",date_fitting,"/"),"ecdc_cases_by_age.csv")
+
+# Read in UK government data for England
+cases_by_ageENG = get_data("https://api.coronavirus.data.gov.uk/v2/data?areaType=nation&areaCode=E92000001&metric=newCasesBySpecimenDateAgeDemographics&format=csv",
+                           "csv","./data/gov_uk_data/",paste0("england_cases_by_age_",date_fitting-1,".csv")) # download date of file is previous day
 
 # Read in and process seroprevalence data from SeroTracker for comparison with estimated cumulative proportion infected
-serotracker_data = fread("../serotracker_data/SeroTracker Serosurveys Reporting Prevalence.csv")
+serotracker_data = fread("./data/serotracker_data/SeroTracker Serosurveys Reporting Prevalence.csv")
 sero_data = process_seroprevalence_data(serotracker_data)
 
-# Remove functions
-rm(list=lsf.str())
-
-# Save output
-save.image(paste0(dir_out,"backcalculation_output.RData"))
-
 # Plot backcalculation output
-plot_output(paste0(dir_out,"backcalculation_output.RData"),ecdc_cases_by_age,sero_data)
+plot_output(paste0(dir_out,"backcalculation_output.RData"),pop,ecdc_cases_by_age,cases_by_ageENG,popUK,sero_data,source_deaths,method,dir_fig)
 
 
 #
@@ -247,7 +262,9 @@ plot_output(paste0(dir_out,"backcalculation_output.RData"),ecdc_cases_by_age,ser
 
 # Calculate current numbers of susceptible and uninfected vaccinated individuals in each 
 # age group in each country
-prev_dt = derive_initial_conditions(paste0(dir_out,"backcalculation_output.RData"))
+prev_dt = calculate_current_prevalence(
+    paste0(dir_out,"backcalculation_output.RData"),agegroups_model,covy,pop,
+    Ab_delay1,Ab_delay2,vax,vaxENG,agegroups,vrnt_prop,ve_params,dE,dIp,dIs,dIa)
 
 # Save
 saveRDS(prev_dt,paste0(dir_out,"init_cond_output.RDS"))
@@ -270,4 +287,4 @@ saveRDS(ovrl_rem_burden_dt,paste0(dir_out,"ovrl_rem_burden_output.RDS"))
 
 
 # Plot
-plot_remaining_burden(rem_burden_dt,ovrl_rem_burden_dt)
+plot_remaining_burden(rem_burden_dt,ovrl_rem_burden_dt,dir_fig)

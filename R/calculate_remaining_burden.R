@@ -5,7 +5,7 @@ library(cowplot)
 library(patchwork)
 library(scales)
 
-source("./backcalculation_functions.R")
+source("./R/functions.R")
 
 calculate_remaining_burden = function(fnm,agegroups_model,pop,ifr,frlty_idx){
     # Load initial conditions calculation output
@@ -21,7 +21,7 @@ calculate_remaining_burden = function(fnm,agegroups_model,pop,ifr,frlty_idx){
     # Infection hospitalisation rate (derived from Salje et al., Science)
     ihr = data.table(age = 0:85,ihr = exp(-7.37 + 0.068 * 0:85) / (1 + exp(-7.37 + 0.068 * 0:85)))
     ihr[,age_group_model:=cut(age,c(min_ages_model,Inf),labels=agegroups_model,right=F)]
-    ihr = ihr[,.(ihr=mean(ihr)),by=.(age_group_model)]
+    ihr = ihr[!is.na(age_group_model),.(ihr=mean(ihr)),by=.(age_group_model)] # exclude values where age group is missing as ages are not included in the backcalculation output
     
     # Add IFR to data table
     base_dt = merge(CJ(country=prev_dt[,unique(country)],age=0:100),pop[,.(country,age,population)],by=c("country","age"),all.x=T)
@@ -97,7 +97,7 @@ calculate_remaining_burden = function(fnm,agegroups_model,pop,ifr,frlty_idx){
     return(list(rem_burden_dt=rem_burden_dt,ovrl_rem_burden_dt=ovrl_rem_burden_dt))
 }
 
-plot_remaining_burden = function(rem_burden_dt,ovrl_rem_burden_dt){
+plot_remaining_burden = function(rem_burden_dt,ovrl_rem_burden_dt,dir_fig = "./figs/"){
     # Plot vaccine coverage pyramids
     # p1 = ggplot(melt(rem_burden_dt,measure.vars = c("pop_prop_u","pop_prop_v")),aes(x=value,y=age_group_model,alpha=variable)) +
     #     geom_col(position = "stack") +
@@ -109,7 +109,7 @@ plot_remaining_burden = function(rem_burden_dt,ovrl_rem_burden_dt){
         scale_alpha_manual(name="",values=c(0.3,0.6,1),c("Unvaccinated &\nunexposed","Previously\ninfected","Partially/fully\nvaccinated &\nuninfected")) +
         labs(x="Proportion of population",y="Age group") +
         facet_wrap(~country)
-    # ggsave(paste0(dir_out,"vax_cov_pop_pyramids.png"),width = 10,height = 8)
+    # ggsave(paste0(dir_fig,"vax_cov_pop_pyramids.png"),width = 10,height = 8)
     
     # Plot susceptible
     
@@ -127,7 +127,7 @@ plot_remaining_burden = function(rem_burden_dt,ovrl_rem_burden_dt){
         coord_cartesian(xlim = c(0,rem_burden_dt[!(country %in% c("Germany","Greece","Romania","Slovakia")),max(cum_inc_hosp_q95u)*1e5])) +
         labs(x="Maximum remaining hospitalisations/100,000 population",y="Age group") +
         facet_wrap(~country)
-    # ggsave(paste0(dir_out,"rem_hosps_by_age.png"),width = 10,height = 8)
+    # ggsave(paste0(dir_fig,"rem_hosps_by_age.png"),width = 10,height = 8)
     
     # p3 = ggplot(rem_burden_dt,aes(y=age_group_model)) +
     #     geom_col(aes(x=cum_inc_deaths*1e5),alpha=0.5) +
@@ -143,7 +143,7 @@ plot_remaining_burden = function(rem_burden_dt,ovrl_rem_burden_dt){
         labs(x="Maximum remaining deaths/100,000 population",y="Age group") +
         facet_wrap(~country) +
         theme(legend.position = "bottom")
-    # ggsave(paste0(dir_out,"rem_deaths_by_age.png"),width = 10,height = 8)
+    # ggsave(paste0(dir_fig,"rem_deaths_by_age.png"),width = 10,height = 8)
     
     # Plot maximum overall remaining burden:
     # hospitalisations against vaccine coverage
@@ -156,13 +156,14 @@ plot_remaining_burden = function(rem_burden_dt,ovrl_rem_burden_dt){
              y="Maximum remaining hospitalisations/100,000 population",
              size="Cumulative\nproportion\ninfected") +
         scale_y_log10()
-    # ggsave(paste0(dir_out,"rem_hosps_vs_prop_vax.png"),width = 8,height = 6.4)
+    # ggsave(paste0(dir_fig,"rem_hosps_vs_prop_vax.png"),width = 8,height = 6.4)
     
     # p = plot_grid(p1+theme(legend.position="none"),p2,p4,labels = c("A","B","C"),nrow=2,ncol=2)
-    # ggsave(paste0(dir_out,"vax_cov_and_rem_hosps.png"),plot = p,width = 12,height = 9.6)
+    # ggsave(paste0(dir_fig,"vax_cov_and_rem_hosps.png"),plot = p,width = 12,height = 9.6)
     # p = plot_grid(p1,p2+theme(legend.position="none"),p4,labels = c("A","B","C"),nrow=2,ncol=2,rel_widths=c(1.1,1))
     p = (p1 + theme(legend.position="none",axis.text.x=element_text(angle=45,hjust=1)) + p2 + theme(axis.text.x=element_text(angle=45,hjust=1))) / p4 + plot_annotation(tag_levels = 'A')
-    ggsave(paste0(dir_out,"vax_cov_and_rem_hosps.png"),plot=p,width = 15,height = 12.5)
+    ggsave(paste0(dir_fig,"vax_cov_and_rem_hosps.png"),plot=p,width = 15,height = 12.5)
+    ggsave(paste0(dir_fig,"vax_cov_and_rem_hosps.pdf"),plot=p,width = 15,height = 12.5)
     
     # deaths against vaccine coverage
     p5 = ggplot(ovrl_rem_burden_dt,aes(x=cum_prop_v)) +
@@ -175,8 +176,8 @@ plot_remaining_burden = function(rem_burden_dt,ovrl_rem_burden_dt){
              size="Cumulative proportion infected") +
         scale_y_log10() +
         theme(legend.position = "bottom")
-    # ggsave(paste0(dir_out,"rem_deaths_vs_prop_vax.png"),width = 8,height = 6.4)
-    ggsave(paste0(dir_out,"vax_cov_and_rem_deaths.png"),plot_grid(p3,p5,rel_widths=c(1,1),labels=c("A","B")),width = 14.4,height = 6)
+    # ggsave(paste0(dir_fig,"rem_deaths_vs_prop_vax.png"),width = 8,height = 6.4)
+    ggsave(paste0(dir_fig,"vax_cov_and_rem_deaths.png"),plot_grid(p3,p5,rel_widths=c(1,1),labels=c("A","B")),width = 14.4,height = 6)
     
     # hospitalisations against proportion aged 60+
     p6 = ggplot(ovrl_rem_burden_dt,aes(x=prop_pop_60plus)) +
@@ -188,7 +189,7 @@ plot_remaining_burden = function(rem_burden_dt,ovrl_rem_burden_dt){
              y="Maximum remaining hospitalisations/100,000 population",
              size="Cumulative proportion infected") +
         scale_y_log10()
-    # ggsave(paste0(dir_out,"rem_hosps_vs_prop_60plus.png"),width = 8,height = 6.4)
+    # ggsave(paste0(dir_fig,"rem_hosps_vs_prop_60plus.png"),width = 8,height = 6.4)
     
     # deaths against proportion aged 60+
     p7 = ggplot(ovrl_rem_burden_dt,aes(x=prop_pop_60plus)) +
@@ -200,11 +201,11 @@ plot_remaining_burden = function(rem_burden_dt,ovrl_rem_burden_dt){
              y="Maximum remaining deaths/100,000 population",
              size="Cumulative\nproportion\ninfected") +
         scale_y_log10()
-    # ggsave(paste0(dir_out,"rem_deaths_vs_prop_60plus.png"),width = 8,height = 6.4)
+    # ggsave(paste0(dir_fig,"rem_deaths_vs_prop_60plus.png"),width = 8,height = 6.4)
     
     p8 = plot_grid(p6+theme(legend.position="none"),
                    p7+theme(legend.position="none"),
                    labels=c("A","B"))
     l = get_legend(p6 + theme(legend.position = "bottom")) # + theme(legend.box.margin = margin(0,0,0,12)))
-    ggsave(paste0(dir_out,"rem_hosps_and_deaths_vs_prop_60plus.png"),plot_grid(p8,l,nrow=2,rel_heights = c(1,0.1)),width = 15,height = 6)
+    ggsave(paste0(dir_fig,"rem_hosps_and_deaths_vs_prop_60plus.png"),plot_grid(p8,l,nrow=2,rel_heights = c(1,0.1)),width = 15,height = 6)
 }

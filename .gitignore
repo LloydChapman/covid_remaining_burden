@@ -11,6 +11,7 @@ data/google_data/
 data/gov_uk_data/
 data/ined_data/
 data/ltccovid_data/*.pdf
+data/ons_data/
 data/owid_data/
 data/phe_data/
 data/uk_data/
