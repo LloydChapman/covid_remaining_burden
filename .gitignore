@@ -1,9 +1,10 @@
+.DS_Store
 *.Rproj
 .Rproj.user
 .Rhistory
 .RData
 .Ruserdata
-.DS_Store
+Rplots.pdf
 data/cog_data/
 data/coverage_data/
 data/ecdc_data/
@@ -18,3 +19,4 @@ data/uk_data/
 data/who_data/
 figs/*
 output/*
+!output/2021-11-03/
