@@ -1,4 +1,4 @@
-calculate_remaining_burden = function(fnm,agegroups_model,pop,ifr,frlty_idx,ve_params){
+calculate_remaining_burden = function(fnm,agegroups_model,pop,ihr,ifr,frlty_idx,ve_params){
     # Load initial conditions calculation output
     prev_dt = readRDS(fnm)
     

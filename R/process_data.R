@@ -130,9 +130,9 @@ process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,
     
     # Read in COG England data
     # cog_vrnt_data = fread("./data/cog_data/lineages_by_ltla_and_week.tsv")
-    # cog_vrnt_data = get_data("https://covid-surveillance-data.cog.sanger.ac.uk/download/lineages_by_ltla_and_week.tsv",
-    #                          "tsv",paste0("./data/cog_data/",date_fitting,"/"),"lineages_by_ltla_and_week.tsv")
-    cog_vrnt_data = fread("./data/cog_data/2021-11-27/lineages_by_ltla_and_week.tsv")
+    cog_vrnt_data = get_data("https://covid-surveillance-data.cog.sanger.ac.uk/download/lineages_by_ltla_and_week.tsv",
+                             "tsv",paste0("./data/cog_data/",date_fitting,"/"),"lineages_by_ltla_and_week.tsv")
+    # cog_vrnt_data = fread("./data/cog_data/2021-11-27/lineages_by_ltla_and_week.tsv")
     
     # Convert week end date from Date to IDate
     cog_vrnt_data[,WeekEndDate:=as.IDate(WeekEndDate)]

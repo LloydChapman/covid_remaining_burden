@@ -293,7 +293,7 @@ saveRDS(prev_dt,paste0(dir_out,"curr_prev_output.RDS"))
 
 # Calculate remaining burden of hospitalisations and deaths assuming that entire
 # population is exposed now
-out = calculate_remaining_burden(paste0(dir_out,"curr_prev_output.RDS"),agegroups_model,pop,ifr,frlty_idx,ve_params)
+out = calculate_remaining_burden(paste0(dir_out,"curr_prev_output.RDS"),agegroups_model,pop,ihr,ifr,frlty_idx,ve_params)
 rem_burden_dt = out$rem_burden_dt
 ovrl_rem_burden_dt = out$ovrl_rem_burden_dt
 

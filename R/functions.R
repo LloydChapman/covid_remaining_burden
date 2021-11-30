@@ -1139,7 +1139,8 @@ construct_vax_data_table = function(vax,dates,agegroups,pop){
 # }
 
 construct_ifr_data_table = function(ifr,base_dt,min_ages,agegroups){
-    ifr_dt = copy(base_dt)
+    # ifr_dt = copy(base_dt)
+    ifr_dt = data.table(age=0:100)
     
     names(ifr) = tolower(names(ifr))
     min_ages_ifr = ifr[,get_min_age(age_group)]
@@ -1155,14 +1156,18 @@ construct_ifr_data_table = function(ifr,base_dt,min_ages,agegroups){
     
     # Calculate population-weighted average for each age group
     cols = c("ifr","ifr_lb","ifr_ub")
-    ifr_dt = ifr_dt[!is.na(age_group),lapply(.SD,function(x) sum(x*population)/sum(population)),.SDcols=cols,by=c("country","age_group")]    
+    # ifr_dt = ifr_dt[!is.na(age_group),lapply(.SD,function(x) sum(x*population)/sum(population)),.SDcols=cols,by=.(country,age_group)] 
+    ifr_dt = ifr_dt[!is.na(age_group),lapply(.SD,mean),.SDcols=cols,by=.(age_group)]
     
     # Calculate standard deviation of posterior distribution of IFR assuming it is normal
     ifr_dt[,sigma:=(ifr-ifr_lb)/qnorm(0.975)]
+    
+    return(ifr_dt)
 }
 
 construct_ihr_data_table = function(ihr,base_dt,min_ages,agegroups){
-    ihr_dt = copy(base_dt)
+    # ihr_dt = copy(base_dt)
+    ihr_dt = data.table(age=0:100)
     
     min_ages_ihr = ihr[,get_min_age(age_group)]
     
@@ -1177,10 +1182,13 @@ construct_ihr_data_table = function(ihr,base_dt,min_ages,agegroups){
     
     # Calculate population-weighted average for each age group
     cols = c("ihr","ihr_lb","ihr_ub")
-    ihr_dt = ihr_dt[!is.na(age_group),lapply(.SD,function(x) sum(x*population)/sum(population)),.SDcols=cols,by=c("country","age_group")]    
+    # ihr_dt = ihr_dt[!is.na(age_group),lapply(.SD,function(x) sum(x*population)/sum(population)),.SDcols=cols,by=.(country,age_group)]    
+    ihr_dt = ihr_dt[!is.na(age_group),lapply(.SD,mean),.SDcols=cols,by=.(age_group)]    
     
     # Calculate standard deviation of posterior distribution of IFR assuming it is normal
     ihr_dt[,sigma:=(ihr-ihr_lb)/qnorm(0.975)]
+    
+    return(ihr_dt)
 }
 
 # construct_data_table = function(agegroups,deaths,pop,cols,ltc_deaths,vax,num_type,ifr){
@@ -1474,13 +1482,18 @@ construct_data_table = function(agegroups,deaths,pop,cols,ltc_deaths,vax,Ab_dela
     ifr_dt = construct_ifr_data_table(ifr,base_dt,min_ages,agegroups)
     
     # Plot country IFRs
-    ggplot(ifr_dt,aes(x=age_group,y=ifr,group=country,color=country)) + 
+    # ggplot(ifr_dt,aes(x=age_group,y=ifr,group=country,color=country)) + 
+    #     geom_line() +
+    #     # scale_y_log10() +
+    #     theme(legend.position = "none")
+    ggplot(ifr_dt,aes(x=age_group,y=ifr)) + 
         geom_line() +
         # scale_y_log10() +
         theme(legend.position = "none")
         
     # Merge IFR with death and vaccination data
-    dt = merge(deaths_vax_dt,ifr_dt,by=c("country","age_group"))
+    # dt = merge(deaths_vax_dt,ifr_dt,by=c("country","age_group"))
+    dt = merge(deaths_vax_dt,ifr_dt,by="age_group")
     # # N.B. Countries without vax data dropped here - check this!
     # dt = merge(dt,num_type[,.(country,prop_va,prop_vb)],by="country")
     
@@ -2323,9 +2336,11 @@ calc_rem_burden = function(prev_dt,ihr_dt,ifr_dt,frlty_idx,ve_params){
     # rem_burden_dt = merge(max_dates,prev_dt,by=c("country","date"),all.x=T)
     
     # Merge with IHR and IFR data tables
-    # rem_burden_dt = merge(rem_burden_dt,ihr,by="age_group_model")
-    rem_burden_dt = merge(prev_dt,ihr_dt,by=c("country","age_group_model"))
-    rem_burden_dt = merge(rem_burden_dt,ifr_dt,by=c("country","age_group_model"))
+    # # rem_burden_dt = merge(rem_burden_dt,ihr,by="age_group_model")
+    # rem_burden_dt = merge(prev_dt,ihr_dt,by=c("country","age_group_model"))
+    # rem_burden_dt = merge(rem_burden_dt,ifr_dt,by=c("country","age_group_model"))
+    rem_burden_dt = merge(prev_dt,ihr_dt,by="age_group_model")
+    rem_burden_dt = merge(rem_burden_dt,ifr_dt,by="age_group_model")
     
     # Calculate maximum number of hospitalisations and deaths among remaining 
     # susceptibles if they were all exposed now

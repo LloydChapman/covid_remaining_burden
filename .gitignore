@@ -22,6 +22,6 @@ data/who_data/
 figs/*
 output/*
 !output/2021-11-03/
-!output/2021-11-28/
+!output/2021-11-30/
 output/2021-11-03/backcalculation_output.RData
-output/2021-11-28/backcalculation_output.RData
+output/2021-11-30/backcalculation_output.RData
