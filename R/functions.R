@@ -2355,19 +2355,19 @@ calc_rem_burden = function(prev_dt,ihr_dt,ifr_dt,frlty_idx,ve_params){
     rem_burden_dt[,`:=`(cum_hosp_v=y*f*(1-ei)*(1-ed)*(1-eh)*ihr*V,
                         cum_deaths_v=y*f*(1-ei)*(1-ed)*(1-em)*ifr*V)]
     # Calculate maximum number of hospitalisations and deaths among previously infected
-    rem_burden_dt[,`:=`(cum_hosp_i=y*f*(1-ei)*(1-ed)*(1-eh)*ihr*R,
-                        cum_deaths_i=y*f*(1-ei)*(1-ed)*(1-em)*ifr*R)]
-    # rem_burden_dt[,`:=`(
-    #     ei_i=(prop_vrnt*ve_params$ei_va2+prop_vrnt2*ve_params$ei2_va2+prop_vrnt3*ve_params$ei3_va2+
-    #           prop_vrnt*ve_params$ei_vb2+prop_vrnt2*ve_params$ei2_vb2+prop_vrnt3*ve_params$ei3_vb2)/2,
-    #     ed_i=(prop_vrnt*ve_params$ed_va2i+prop_vrnt2*ve_params$ed_va2i2+prop_vrnt3*ve_params$ed_va2i3+
-    #           prop_vrnt*ve_params$ed_vb2i+prop_vrnt2*ve_params$ed_vb2i2+prop_vrnt3*ve_params$ed_vb2i3)/2,
-    #     eh_i=(prop_vrnt*ve_params$eh_va2d+prop_vrnt2*ve_params$eh_va2d2+prop_vrnt3*ve_params$eh_va2d3+
-    #           prop_vrnt*ve_params$eh_vb2d+prop_vrnt2*ve_params$eh_vb2d2+prop_vrnt3*ve_params$eh_vb2d3)/2,
-    #     em_i=(prop_vrnt*ve_params$em_va2d+prop_vrnt2*ve_params$em_va2d2+prop_vrnt3*ve_params$em_va2d3+
-    #           prop_vrnt*ve_params$em_vb2d+prop_vrnt2*ve_params$em_vb2d2+prop_vrnt3*ve_params$em_vb2d3)/2)]
-    # rem_burden_dt[,`:=`(cum_hosp_i=y*f*(1-ei_i)*(1-ed_i)*(1-eh_i)*ihr*R,
-    #                     cum_deaths_i=y*f*(1-ei_i)*(1-ed_i)*(1-em_i)*ifr*R)]
+    # rem_burden_dt[,`:=`(cum_hosp_i=y*f*(1-ei)*(1-ed)*(1-eh)*ihr*R,
+    #                     cum_deaths_i=y*f*(1-ei)*(1-ed)*(1-em)*ifr*R)]
+    rem_burden_dt[,`:=`(
+        ei_i=(prop_vrnt*ve_params$ei_va2+prop_vrnt2*ve_params$ei2_va2+prop_vrnt3*ve_params$ei3_va2+
+              prop_vrnt*ve_params$ei_vb2+prop_vrnt2*ve_params$ei2_vb2+prop_vrnt3*ve_params$ei3_vb2)/2,
+        ed_i=(prop_vrnt*ve_params$ed_va2i+prop_vrnt2*ve_params$ed_va2i2+prop_vrnt3*ve_params$ed_va2i3+
+              prop_vrnt*ve_params$ed_vb2i+prop_vrnt2*ve_params$ed_vb2i2+prop_vrnt3*ve_params$ed_vb2i3)/2,
+        eh_i=(prop_vrnt*ve_params$eh_va2d+prop_vrnt2*ve_params$eh_va2d2+prop_vrnt3*ve_params$eh_va2d3+
+              prop_vrnt*ve_params$eh_vb2d+prop_vrnt2*ve_params$eh_vb2d2+prop_vrnt3*ve_params$eh_vb2d3)/2,
+        em_i=(prop_vrnt*ve_params$em_va2d+prop_vrnt2*ve_params$em_va2d2+prop_vrnt3*ve_params$em_va2d3+
+              prop_vrnt*ve_params$em_vb2d+prop_vrnt2*ve_params$em_vb2d2+prop_vrnt3*ve_params$em_vb2d3)/2)]
+    rem_burden_dt[,`:=`(cum_hosp_i=y*f*(1-ei_i)*(1-ed_i)*(1-eh_i)*ihr*R,
+                        cum_deaths_i=y*f*(1-ei_i)*(1-ed_i)*(1-em_i)*ifr*R)]
     
     # Calculate total maximum hospitalisations and deaths
     rem_burden_dt[,`:=`(cum_hosp=cum_hosp_u+cum_hosp_v+cum_hosp_i,cum_deaths=cum_deaths_u+cum_deaths_v+cum_deaths_i)]

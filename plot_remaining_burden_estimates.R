@@ -6,7 +6,7 @@ library(patchwork)
 source("./R/plot_remaining_burden.R")
 
 # Date of fitting - change according to run date
-date_fitting = as.Date("2021-11-28")
+date_fitting = as.Date("2021-11-30")
 
 # Set output directory
 dir_out = paste0("./output/",date_fitting,"/")
