@@ -10,12 +10,16 @@ if(!require(incidental)){
     install.packages("incidental")
 }
 library(incidental)
+library(remotes)
+if (!require(EpiNow2)){
+  install_github("LloydChapman/EpiNow2")
+}
+library(EpiNow2)
 library(mgcv)
 library(nnet)
 library(splines)
 library(effects)
 library(doParallel)
-# library(truncnorm)
 library(cowplot)
 library(patchwork)
 library(stringr)
@@ -31,10 +35,6 @@ source("./R/calculate_remaining_burden.R")
 # 
 
 
-# Register parallel backend
-# registerDoParallel(cores = detectCores()-1)
-registerDoParallel(cores = 4)
-
 date_fitting = today()
 
 # Create directory to save output into
@@ -46,7 +46,11 @@ dir_fig = "./figs/"
 dir.create(dir_fig)
 
 # Set plot theme
-theme_set(cowplot::theme_cowplot(font_size = 12) + theme(strip.background = element_blank()))
+theme_set(theme_cowplot(font_size = 12) + theme(
+  strip.background = element_blank(),
+  plot.background = element_rect(fill="white"),
+  legend.background = element_rect(fill="white"),
+  panel.background = element_rect(fill="white")))
 
 # Download death data
 download_death_data("coverage")
@@ -56,7 +60,17 @@ download_death_data("ined")
 source_deaths = "coverage"
 
 # Set deconvolution method
-method = "ride"
+method = "ride" #"epinow2" #
+
+# Set up parallelisation
+if (method=="epinow2"){
+  options(mc.cores=4)
+} else {
+  # Register parallel backend
+  # registerDoParallel(cores = detectCores()-1)
+  registerDoParallel(cores = 4)  
+}
+
 
 # Set age groups for deconvolution
 agegroups = c("0-39","40-49","50-59","60-69","70-79","80+") #c("0-9","10-19","20-29","30-39","40-49","50-59","60-69","70-79","80+")
@@ -68,8 +82,6 @@ max_ages[is.na(max_ages)] = Inf
 agegroups_model = factor(agegroups,levels = agegroups)
 
 # Get country iso codes
-# covid_data_path = "./fitting_data/"
-# datapath = function(x) paste0(covid_data_path, x)
 country_iso_codes = readRDS("./data/country_iso_codes.rds")
 
 # Read in UN population data
@@ -130,7 +142,10 @@ Ab_delay1 = 28 # delay after 1st dose in days
 Ab_delay2 = 14 # delay after 2nd dose in days
 
 # Read in ensemble IFR estimate from O'Driscoll et al Nature 2020
-ifr = fread("./data/IFR_by_age_ODriscoll.csv")
+ifr = fread("./data/ifr_odriscoll.csv")
+
+# Read in IHR estimates from Salje et al Science 2020
+ihr = fread("./data/ihr_salje.csv")
 
 # Frailty index for relative frailty of LTC residents compared to general population
 frlty_idx = 3.8
@@ -144,6 +159,7 @@ out = process_data(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,Ab_de
 dt = out$dt
 vax = out$vax
 vaxENG = out$vaxENG
+vaxDEU = out$vaxDEU
 vrnt_prop = out$vrnt_prop
 rm(out)
 
@@ -162,26 +178,26 @@ print(vax[country %in% dt[,unique(country)],.(count=sum(count)),by=.(country,age
 
 
 # Convolve distributions to get incubation period and exposure-to-death delay distribution
-# ip_params = readRDS("incubation_period.rds")
-# ip_mean = convert_to_nat_mean(ip_params$mean,ip_params$sd)
-# ip_sd = convert_to_nat_sd(ip_params$mean,ip_params$sd)
-# dIncub = cm_delay_lnorm(ip_mean,ip_sd/ip_mean,t_max = 30,t_step = 1)$p
-# 
-# od_params = readRDS("onset_to_death_delay.rds")
-# od_mean = convert_to_nat_mean(od_params$mean,od_params$sd)
-# od_sd = convert_to_nat_sd(od_params$mean,od_params$sd)
-# dDeath = disc_conv(cm_delay_lnorm(ip_mean,ip_sd/ip_mean,t_max = 60,t_step = 1)$p,cm_delay_lnorm(od_mean,od_sd/od_mean,t_max = 60,t_step = 1)$p)
-dIncub = disc_conv(cm_delay_gamma(2.5, 2.5, t_max = 30, t_step = 1)$p,
-                   cm_delay_gamma(2.5, 4.0, t_max = 30, t_step = 1)$p)
-dDeath = disc_conv(cm_delay_gamma(2.5, 2.5, t_max = 60, t_step = 1)$p,
-                   cm_delay_gamma(15, 2.2, t_max = 60, t_step = 1)$p)
+ip = readRDS("~/covidm/newcovid3/incubation_period.rds")
+ip_mean = convert_to_nat_mean(ip$mean,ip$sd)
+ip_sd = convert_to_nat_sd(ip$mean,ip$sd)
+dIncub = cm_delay_lnorm(ip_mean,ip_sd/ip_mean,t_max = 30,t_step = 1)$p
+
+odd = readRDS("~/covidm/newcovid3/onset_to_death_delay.rds")
+odd_mean = convert_to_nat_mean(odd$mean,odd$sd)
+odd_sd = convert_to_nat_sd(odd$mean,odd$sd)
+dDeath = disc_conv(cm_delay_lnorm(ip_mean,ip_sd/ip_mean,t_max = 60,t_step = 1)$p,cm_delay_lnorm(odd_mean,odd_sd/odd_mean,t_max = 60,t_step = 1)$p)
+# dIncub = disc_conv(cm_delay_gamma(2.5, 2.5, t_max = 30, t_step = 1)$p,
+#                    cm_delay_gamma(2.5, 4.0, t_max = 30, t_step = 1)$p)
+# dDeath = disc_conv(cm_delay_gamma(2.5, 2.5, t_max = 60, t_step = 1)$p,
+#                    cm_delay_gamma(15, 2.2, t_max = 60, t_step = 1)$p)
 
 # Normalise to ensure distributions sum to 1
 dIncub = dIncub/sum(dIncub)
 dDeath = dDeath/sum(dDeath)
 
 ## Backcalculate IFR-scaled infections
-out = run_backcalculation(dt,dDeath,dIncub,frlty_idx,method = method)
+out = run_backcalculation(dt,dDeath,dIncub,frlty_idx,method = method,ip,odd)
 backcalc_dt = out$backcalc_dt
 backcalc_samps = out$backcalc_samps
 backcalc_dt_non_ltc = out$backcalc_dt_non_ltc
@@ -232,7 +248,7 @@ for (i in 1:length(countries)){
     }
 }
 
-save(backcalc_dt,backcalc_dt_non_ltc,backcalc_dt_ltc,
+save(dt,backcalc_dt,backcalc_dt_non_ltc,backcalc_dt_ltc,
      backcalc_samps,backcalc_samps_non_ltc,backcalc_samps_ltc,
      exposures_samps,exposures_samps_non_ltc,exposures_samps_ltc,
      infections_samps,infections_samps_non_ltc,infections_samps_ltc,
@@ -256,7 +272,7 @@ plot_output(paste0(dir_out,"backcalculation_output.RData"),pop,ecdc_cases_by_age
 
 
 #
-# INITIAL CONDITIONS CALCULATION
+# CURRENT PREVALENCE CALCULATION
 #
 
 
@@ -264,10 +280,10 @@ plot_output(paste0(dir_out,"backcalculation_output.RData"),pop,ecdc_cases_by_age
 # age group in each country
 prev_dt = calculate_current_prevalence(
     paste0(dir_out,"backcalculation_output.RData"),agegroups_model,covy,pop,
-    Ab_delay1,Ab_delay2,vax,vaxENG,agegroups,vrnt_prop,ve_params,dE,dIp,dIs,dIa)
+    Ab_delay1,Ab_delay2,vax,vaxENG,vaxDEU,agegroups,vrnt_prop,ve_params,dE,dIp,dIs,dIa)
 
 # Save
-saveRDS(prev_dt,paste0(dir_out,"init_cond_output.RDS"))
+saveRDS(prev_dt,paste0(dir_out,"curr_prev_output.RDS"))
 
 
 #
@@ -277,14 +293,15 @@ saveRDS(prev_dt,paste0(dir_out,"init_cond_output.RDS"))
 
 # Calculate remaining burden of hospitalisations and deaths assuming that entire
 # population is exposed now
-out = calculate_remaining_burden(paste0(dir_out,"init_cond_output.RDS"),agegroups_model,pop,ifr,frlty_idx)
+out = calculate_remaining_burden(paste0(dir_out,"curr_prev_output.RDS"),agegroups_model,pop,ifr,frlty_idx,ve_params)
 rem_burden_dt = out$rem_burden_dt
 ovrl_rem_burden_dt = out$ovrl_rem_burden_dt
 
 # Save
 saveRDS(rem_burden_dt,paste0(dir_out,"rem_burden_output.RDS"))
+write.csv(rem_burden_dt,paste0(dir_out,"rem_burden_output.csv"),row.names=F)
 saveRDS(ovrl_rem_burden_dt,paste0(dir_out,"ovrl_rem_burden_output.RDS"))
+write.csv(ovrl_rem_burden_dt,paste0(dir_out,"ovrl_rem_burden_output.csv"),row.names=F)
 
-
-# Plot
-plot_remaining_burden(rem_burden_dt,ovrl_rem_burden_dt,dir_fig)
+# # Plot
+# plot_remaining_burden(rem_burden_dt,ovrl_rem_burden_dt,dir_fig)

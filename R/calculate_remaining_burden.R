@@ -1,26 +1,24 @@
-calculate_remaining_burden = function(fnm,agegroups_model,pop,ifr,frlty_idx){
+calculate_remaining_burden = function(fnm,agegroups_model,pop,ifr,frlty_idx,ve_params){
     # Load initial conditions calculation output
-    # load(fnm)
     prev_dt = readRDS(fnm)
-    
-    # Set plot theme
-    theme_set(cowplot::theme_cowplot(font_size = 10) + theme(strip.background = element_blank()))
     
     # Get minimum ages of age groups
     min_ages_model = get_min_age(agegroups_model)
     
-    # Infection hospitalisation rate (derived from Salje et al., Science)
-    ihr = data.table(age = 0:85,ihr = exp(-7.37 + 0.068 * 0:85) / (1 + exp(-7.37 + 0.068 * 0:85)))
-    ihr[,age_group_model:=cut(age,c(min_ages_model,Inf),labels=agegroups_model,right=F)]
-    ihr = ihr[!is.na(age_group_model),.(ihr=mean(ihr)),by=.(age_group_model)] # exclude values where age group is missing as ages are not included in the backcalculation output
-    
-    # Add IFR to data table
+    # Construct infection hospitalisation rate data table
     base_dt = merge(CJ(country=prev_dt[,unique(country)],age=0:100),pop[,.(country,age,population)],by=c("country","age"),all.x=T)
+    # ihr = data.table(age = 0:85,ihr = exp(-7.37 + 0.068 * 0:85) / (1 + exp(-7.37 + 0.068 * 0:85)))
+    # ihr[,age_group_model:=cut(age,c(min_ages_model,Inf),labels=agegroups_model,right=F)]
+    # ihr = ihr[!is.na(age_group_model),.(ihr=mean(ihr)),by=.(age_group_model)] # exclude values where age group is missing as ages are not included in the backcalculation output
+    ihr_dt = construct_ihr_data_table(ihr,base_dt,min_ages_model,agegroups_model)
+    setnames(ihr_dt,"age_group","age_group_model")
+    
+    # Construct IFR data table
     ifr_dt = construct_ifr_data_table(ifr,base_dt,min_ages_model,agegroups_model)
     setnames(ifr_dt,"age_group","age_group_model")
     
     # Calculate remaining burden of hospitalisations and deaths
-    res = calc_rem_burden(prev_dt,ihr,ifr_dt,frlty_idx)
+    res = calc_rem_burden(prev_dt,ihr_dt,ifr_dt,frlty_idx,ve_params)
     
     # Calculate 
     # cols = c("population","cum_prop_v",

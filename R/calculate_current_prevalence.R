@@ -1,25 +1,6 @@
-library(data.table)
-library(qs)
-library(ggplot2)
-library(ISOweek)
-library(doParallel)
-
-source("./R/functions.R")
-
-# Register parallel backend
-# registerDoParallel(cores = detectCores()-1)
-registerDoParallel(cores = 4)
-
-calculate_current_prevalence = function(fnm,agegroups_model,covy,pop,Ab_delay1,Ab_delay2,vax,vaxENG,agegroups,vrnt_prop,ve_params,dE,dIp,dIs,dIa){
+calculate_current_prevalence = function(fnm,agegroups_model,covy,pop,Ab_delay1,Ab_delay2,vax,vaxENG,vaxDEU,agegroups,vrnt_prop,ve_params,dE,dIp,dIs,dIa){
     # Load backcalculation output
     load(fnm)
-    
-    # # Source script with delay functions
-    # cm_path = "./covidm_for_fitting/"
-    # source(paste0(cm_path,"/R/shared/cmS_misc.R"))
-    
-    # Set plot theme
-    theme_set(cowplot::theme_cowplot(font_size = 10) + theme(strip.background = element_blank()))
     
     # Get minimum ages of age groups
     min_ages_model = get_min_age(agegroups_model)
@@ -49,7 +30,8 @@ calculate_current_prevalence = function(fnm,agegroups_model,covy,pop,Ab_delay1,A
     dates1 = seq.Date(backcalc_dt[,min(date)]-ceiling(max(Ab_delay1,Ab_delay2)/7)*7,backcalc_dt[,max(date)],by=1)
     vax_dt = construct_vax_data_table(vax,dates1,agegroups_model,pop)
     vaxENG_dt = construct_vax_data_table(vaxENG,dates1,agegroups_model,pop)
-    vax_dt = rbind(vax_dt,vaxENG_dt)
+    vaxDEU_dt = construct_vax_data_table(vaxDEU,dates1,agegroups_model,pop)
+    vax_dt = rbind(vax_dt,vaxENG_dt,vaxDEU_dt)
     
     # Add lags for Ab development to date
     vax_dt[dose==1,date:=date+Ab_delay1]

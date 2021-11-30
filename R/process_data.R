@@ -1,18 +1,3 @@
-library(data.table)
-library(qs)
-library(ggplot2)
-library(covidregionaldata)
-library(ISOweek)
-library(lubridate)
-library(mgcv)
-library(nnet)
-library(splines)
-library(effects)
-library(cowplot)
-library(stringr)
-
-source("./R/functions.R")
-
 process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,Ab_delay2,ifr,ve_params,dir_fig){
     # DEATH DATA
     
@@ -48,9 +33,9 @@ process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,
     }
     
     # Use INED data for the Netherlands and Romania as they are missing from 
-    # COVerAGE data
-    deaths = rbind(deaths[!(country %in% c("Netherlands","Romania")),!"code"],
-                   deaths_ined[country %in% c("Netherlands","Romania"),
+    # COVerAGE data and for Italy as it seems more consistent with WHO data
+    deaths = rbind(deaths[!(country %in% c("Italy","Netherlands","Romania")),!"code"],
+                   deaths_ined[country %in% c("Italy","Netherlands","Romania"),
                                .(country,date,age_group,cum_deaths_both,cum_deaths_female,cum_deaths_male)])
     
     # # Plot to check
@@ -75,6 +60,7 @@ process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,
     out = clean_ecdc_vaccination_data(ecdc_vax,country_iso_codes)
     vax = out$vax
     vax_type = out$vax_type
+    agg_vax = out$agg_vax
     
     # # Checks on coverage in Germany and the Netherlands
     # ggplot(vax[country=="Netherlands" & dose==1],aes(x=date,y=count,color=age_group)) + geom_line() + facet_wrap(~type)
@@ -111,6 +97,13 @@ process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,
     # Process to same format as cleaned ECDC vaccination data
     vaxENG = process_gov_uk_vaccination_data(vaccENG,vax_type)
     
+    # Get RKI vaccination data
+    rki_vax = get_data(paste0("https://raw.githubusercontent.com/robert-koch-institut/COVID-19-Impfungen_in_Deutschland/master/Archiv/",
+                              date_fitting-1,"_Deutschland_Landkreise_COVID-19-Impfungen.csv"),"csv",paste0("./data/rki_data/",date_fitting,"/"),"rki_vaccination_data.csv")
+    
+    # Process to same format as cleaned ECDC vaccination data
+    vaxDEU = process_rki_vaccination_data(rki_vax,ecdc_vax,pop)
+    
     # # Plot
     # ggplot(vaxENG[,.(type,prop=count/sum(count,na.rm=T)),by=.(date,age_group,dose)][type=="vb"],
     #        aes(x=date,y=prop,group=factor(dose),color=factor(dose))) +
@@ -137,8 +130,9 @@ process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,
     
     # Read in COG England data
     # cog_vrnt_data = fread("./data/cog_data/lineages_by_ltla_and_week.tsv")
-    cog_vrnt_data = get_data("https://covid-surveillance-data.cog.sanger.ac.uk/download/lineages_by_ltla_and_week.tsv",
-                             "tsv",paste0("./data/cog_data/",date_fitting,"/"),"lineages_by_ltla_and_week.tsv")
+    # cog_vrnt_data = get_data("https://covid-surveillance-data.cog.sanger.ac.uk/download/lineages_by_ltla_and_week.tsv",
+    #                          "tsv",paste0("./data/cog_data/",date_fitting,"/"),"lineages_by_ltla_and_week.tsv")
+    cog_vrnt_data = fread("./data/cog_data/2021-11-27/lineages_by_ltla_and_week.tsv")
     
     # Convert week end date from Date to IDate
     cog_vrnt_data[,WeekEndDate:=as.IDate(WeekEndDate)]
@@ -168,7 +162,7 @@ process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,
     # Construct data tables of deaths, vaccinations and IFR for deconvolution age
     # groups
     cols = c("cum_deaths_male","cum_deaths_female","cum_deaths_both")
-    dt = construct_data_table(agegroups,deaths,pop,cols,ltc_deaths,vax,Ab_delay1,Ab_delay2,vaxENG,ifr,vrnt_prop,ve_params)
+    dt = construct_data_table(agegroups,deaths,pop,cols,ltc_deaths,vax,Ab_delay1,Ab_delay2,vaxENG,vaxDEU,ifr,vrnt_prop,ve_params)
     
     # # Plot data to check
     # # by age
@@ -206,16 +200,16 @@ process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,
     ps1 = plot_vax_cov(dt[date>=start_date])
     # ggsave(paste0(dir_fig,"vax_cov_by_age.png"),width = 10,height = 8)
     
-    # Calculate and plot IFR with different assumptions:
-    # with scaling for Alpha and Delta severity
-    dt[,ifr_t:=((1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v))+cum_prop_v/(1-ei*cum_prop_v)*(1-ei)*(1-ed)*(1-em))*(prop_vrnt+prop_vrnt2*1.5+prop_vrnt3*1.5*1.8)*ifr]
-    plot_ifr(dt[date>=start_date])
-    ggsave(paste0(dir_fig,"ifr_over_time_sev_scld.png"),width = 10,height = 8)
-    plot_avg_ifr(dt[date>=start_date])
-    ggsave(paste0(dir_fig,"avg_ifr_over_time_sev_scld.png"),width = 5,height = 4)
-    
-    # without scaling for Alpha and Delta severity
-    dt[,ifr_t:=((1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v))+cum_prop_v/(1-ei*cum_prop_v)*(1-ei)*(1-ed)*(1-em))*ifr]
+    # # Calculate and plot IFR with different assumptions:
+    # # with scaling for Alpha and Delta severity
+    # dt[,ifr_t:=((1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v))+cum_prop_v/(1-ei*cum_prop_v)*(1-ei)*(1-ed)*(1-em))*(prop_vrnt+prop_vrnt2*1.5+prop_vrnt3*1.5*1.8)*ifr]
+    # plot_ifr(dt[date>=start_date])
+    # ggsave(paste0(dir_fig,"ifr_over_time_sev_scld.png"),width = 10,height = 8)
+    # plot_avg_ifr(dt[date>=start_date])
+    # ggsave(paste0(dir_fig,"avg_ifr_over_time_sev_scld.png"),width = 5,height = 4)
+    # 
+    # # without scaling for Alpha and Delta severity
+    # dt[,ifr_t:=((1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v))+cum_prop_v/(1-ei*cum_prop_v)*(1-ei)*(1-ed)*(1-em))*ifr]
     ps2 = plot_ifr(dt[date>=start_date])
     # ggsave(paste0(dir_fig,"ifr_over_time_not_sev_scld.png"),width = 10,height = 8)
     p2 = plot_avg_ifr(dt[date>=start_date])
@@ -224,7 +218,7 @@ process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,
                   p2+theme(legend.position="none"),
                   labels = c("A","B"))
     l = get_legend(p1 + theme(legend.box.margin = margin(0,0,0,12)))
-    ggsave(paste0(dir_fig,"vax_cov_and_IFR.png"),plot_grid(p,l,rel_widths = c(3,.4)),width = 10,height = 4.75)
+    ggsave(paste0(dir_fig,"vax_cov_and_IFR.png"),plot_grid(p,l,rel_widths = c(3,.4)),width = 10,height = 4.75,bg = "white")
     ggsave(paste0(dir_fig,"vax_cov_and_IFR.pdf"),plot_grid(p,l,rel_widths = c(3,.4)),width = 10,height = 4.75)
     
     ps = plot_grid(ps1+theme(legend.position="none",axis.text.x=element_text(angle=90,hjust=1),strip.text=element_text(size=9)),
@@ -237,5 +231,5 @@ process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,
     plot_variant_proportions(vrnt_prop[country %in% dt[,unique(country)]],vrnt_data[country %in% dt[,unique(country)]])
     ggsave(paste0(dir_fig,"vrnt_prop_over_time.png"),width = 7.5,height = 6)
     
-    return(list(dt=dt,vax=vax,vaxENG=vaxENG,vrnt_prop=vrnt_prop))
+    return(list(dt=dt,vax=vax,vaxENG=vaxENG,vaxDEU=vaxDEU,vrnt_prop=vrnt_prop))
 }

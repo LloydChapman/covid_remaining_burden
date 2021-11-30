@@ -6,7 +6,7 @@ library(patchwork)
 source("./R/plot_remaining_burden.R")
 
 # Date of fitting - change according to run date
-date_fitting = as.Date("2021-11-03")
+date_fitting = as.Date("2021-11-28")
 
 # Set output directory
 dir_out = paste0("./output/",date_fitting,"/")
@@ -26,4 +26,4 @@ theme_set(theme_cowplot(font_size = 12) + theme(
     panel.background = element_rect(fill="white")))
 
 # Plot maximum remaining burden estimates
-plot_remaining_burden(rem_burden_dt,ovrl_rem_burden_dt,dir_fig)
+plot_remaining_burden(rem_burden_dt,ovrl_rem_burden_dt,dir_fig,date_fitting)
