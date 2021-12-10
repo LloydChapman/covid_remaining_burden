@@ -1,20 +1,24 @@
-process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,Ab_delay2,ifr,ve_params,dir_fig){
+process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,Ab_delay2,ifr,ve_params,dir_fig,date_fitting){
     # DEATH DATA
     
     # Read in WHO death data
-    who_deaths = get_national_data(source="who")
-    setDT(who_deaths)
-    dir.create(paste0("./data/who_data/",date_fitting),recursive = T)
-    write.csv(who_deaths,paste0("./data/who_data/",date_fitting,"/who_data.csv"),row.names = F)
+    # who_deaths = get_national_data(source="who")
+    # setDT(who_deaths)
+    # dir.create(paste0("./data/who_data/",date_fitting),recursive = T)
+    # write.csv(who_deaths,paste0("./data/who_data/",date_fitting,"/who_data.csv"),row.names = F)
+    who_deaths = fread(paste0("./data/who_data/",date_fitting,"/who_data.csv"))
+    who_deaths[,date:=as.Date(date)]
     
     # Get England data
-    uk_data = get_regional_data("United Kingdom")
-    setDT(uk_data)
-    cols = c("region",intersect(names(who_deaths),names(uk_data)))
-    phe_deaths = uk_data[region=="England",..cols]
-    setnames(phe_deaths,"region","country")
-    dir.create(paste0("./data/phe_data/",date_fitting),recursive = T)
-    write.csv(phe_deaths,paste0("./data/phe_data/",date_fitting,"/phe_data.csv"),row.names = F)
+    # uk_data = get_regional_data("United Kingdom")
+    # setDT(uk_data)
+    # cols = c("region",intersect(names(who_deaths),names(uk_data)))
+    # phe_deaths = uk_data[region=="England",..cols]
+    # setnames(phe_deaths,"region","country")
+    # dir.create(paste0("./data/phe_data/",date_fitting),recursive = T)
+    # write.csv(phe_deaths,paste0("./data/phe_data/",date_fitting,"/phe_data.csv"),row.names = F)
+    phe_deaths = fread(paste0("./data/phe_data/",date_fitting,"/phe_data.csv"))
+    phe_deaths[,date:=as.Date(date)]
     
     # Bind to WHO data
     who_deaths = rbind(who_deaths,phe_deaths,fill=T)
@@ -33,9 +37,10 @@ process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,
     }
     
     # Use INED data for the Netherlands and Romania as they are missing from 
-    # COVerAGE data and for Italy as it seems more consistent with WHO data
-    deaths = rbind(deaths[!(country %in% c("Italy","Netherlands","Romania")),!"code"],
-                   deaths_ined[country %in% c("Italy","Netherlands","Romania"),
+    # COVerAGE data and for Denmark and Italy as it seems more consistent with WHO data
+    countries_ined = c("Denmark","Italy","Netherlands","Romania")
+    deaths = rbind(deaths[!(country %in% countries_ined),!"code"],
+                   deaths_ined[country %in% countries_ined,
                                .(country,date,age_group,cum_deaths_both,cum_deaths_female,cum_deaths_male)])
     
     # # Plot to check
@@ -49,9 +54,10 @@ process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,
     # VACCINATION DATA
     
     # Read in ECDC vaccination data
-    # ecdc_vax = fread("./data/ecdc_data/ecdc_vaccination_data.csv")
-    ecdc_vax = get_data("https://opendata.ecdc.europa.eu/covid19/vaccine_tracker/csv","csv",
-                        paste0("./data/ecdc_data/",date_fitting,"/"),"ecdc_vaccination_data.csv")
+    # # ecdc_vax = fread("./data/ecdc_data/ecdc_vaccination_data.csv")
+    # ecdc_vax = get_data("https://opendata.ecdc.europa.eu/covid19/vaccine_tracker/csv","csv",
+    #                     paste0("./data/ecdc_data/",date_fitting,"/"),"ecdc_vaccination_data.csv")
+    ecdc_vax = fread(paste0("./data/ecdc_data/",date_fitting,"/ecdc_vaccination_data.csv"))
     
     # Clean ECDC vaccination data
     # out = clean_ecdc_vaccination_data(ecdc_vax,country_iso_codes)
@@ -91,16 +97,18 @@ process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,
     # vaxENG = process_phe_vaccination_data(vaccPHE,agegroups_model)
     
     # Read in UK government vaccination data for England
-    vaccENG = get_data("https://api.coronavirus.data.gov.uk/v2/data?areaType=nation&areaCode=E92000001&metric=vaccinationsAgeDemographics&format=csv",
-                       "csv","./data/gov_uk_data/",paste0("nation_",date_fitting-1,".csv")) # date of download file is previous day
+    # vaccENG = get_data("https://api.coronavirus.data.gov.uk/v2/data?areaType=nation&areaCode=E92000001&metric=vaccinationsAgeDemographics&format=csv",
+    #                    "csv","./data/gov_uk_data/",paste0("nation_",date_fitting-1,".csv")) # date of download file is previous day
+    vaccENG = fread(paste0("./data/gov_uk_data/nation_",date_fitting-1,".csv"))
     
     # Process to same format as cleaned ECDC vaccination data
     vaxENG = process_gov_uk_vaccination_data(vaccENG,vax_type)
     
     # Get RKI vaccination data
-    rki_vax = get_data(paste0("https://raw.githubusercontent.com/robert-koch-institut/COVID-19-Impfungen_in_Deutschland/master/Archiv/",
-                              date_fitting-1,"_Deutschland_Landkreise_COVID-19-Impfungen.csv"),"csv",paste0("./data/rki_data/",date_fitting,"/"),"rki_vaccination_data.csv")
-    
+    # rki_vax = get_data(paste0("https://raw.githubusercontent.com/robert-koch-institut/COVID-19-Impfungen_in_Deutschland/master/Archiv/",
+    #                           date_fitting-1,"_Deutschland_Landkreise_COVID-19-Impfungen.csv"),"csv",paste0("./data/rki_data/",date_fitting,"/"),"rki_vaccination_data.csv")
+    rki_vax = fread(paste0("./data/rki_data/",date_fitting,"/rki_vaccination_data.csv"))
+        
     # Process to same format as cleaned ECDC vaccination data
     vaxDEU = process_rki_vaccination_data(rki_vax,ecdc_vax,pop)
     
@@ -114,9 +122,10 @@ process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,
     # VARIANT DATA
 
     # Read in ECDC variant data
-    # ecdc_vrnt_data = fread("./data/ecdc_data/ecdc_variant_data.csv")
-    ecdc_vrnt_data = get_data("https://opendata.ecdc.europa.eu/covid19/virusvariant/csv","csv",
-                              paste0("./data/ecdc_data/",date_fitting,"/"),"ecdc_variant_data.csv")
+    # # ecdc_vrnt_data = fread("./data/ecdc_data/ecdc_variant_data.csv")
+    # ecdc_vrnt_data = get_data("https://opendata.ecdc.europa.eu/covid19/virusvariant/csv","csv",
+    #                           paste0("./data/ecdc_data/",date_fitting,"/"),"ecdc_variant_data.csv")
+    ecdc_vrnt_data = fread(paste0("./data/ecdc_data/",date_fitting,"/ecdc_variant_data.csv"))
     
     # Convert ISO weeks to dates
     ecdc_vrnt_data[,date:=as.IDate(ISOweek2date(paste0(sub("-","-W",year_week),"-7")))]
@@ -129,10 +138,10 @@ process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,
     vrnt_data = process_variant_data(ecdc_vrnt_data)
     
     # Read in COG England data
-    # cog_vrnt_data = fread("./data/cog_data/lineages_by_ltla_and_week.tsv")
-    cog_vrnt_data = get_data("https://covid-surveillance-data.cog.sanger.ac.uk/download/lineages_by_ltla_and_week.tsv",
-                             "tsv",paste0("./data/cog_data/",date_fitting,"/"),"lineages_by_ltla_and_week.tsv")
-    # cog_vrnt_data = fread("./data/cog_data/2021-11-27/lineages_by_ltla_and_week.tsv")
+    # # cog_vrnt_data = fread("./data/cog_data/lineages_by_ltla_and_week.tsv")
+    # cog_vrnt_data = get_data("https://covid-surveillance-data.cog.sanger.ac.uk/download/lineages_by_ltla_and_week.tsv",
+    #                          "tsv",paste0("./data/cog_data/",date_fitting,"/"),"lineages_by_ltla_and_week.tsv")
+    cog_vrnt_data = fread(paste0("./data/cog_data/",date_fitting,"/lineages_by_ltla_and_week.tsv"))
     
     # Convert week end date from Date to IDate
     cog_vrnt_data[,WeekEndDate:=as.IDate(WeekEndDate)]
@@ -193,7 +202,8 @@ process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,
     # Plot vaccine coverage
     # country-level
     start_date = as.Date("2020-12-01")
-    p1 = plot_ovrl_vax_cov(dt[date>=start_date])
+    line_labels = T
+    p1 = plot_ovrl_vax_cov(dt[date>=start_date],line_labels)
     # ggsave(paste0(dir_fig,"vax_cov.png"),width = 5,height = 4)
     
     # by country and age
@@ -212,20 +222,26 @@ process_data = function(source_deaths,country_iso_codes,agegroups,pop,Ab_delay1,
     # dt[,ifr_t:=((1-(1-ei)*cum_prop_v/(1-ei*cum_prop_v))+cum_prop_v/(1-ei*cum_prop_v)*(1-ei)*(1-ed)*(1-em))*ifr]
     ps2 = plot_ifr(dt[date>=start_date])
     # ggsave(paste0(dir_fig,"ifr_over_time_not_sev_scld.png"),width = 10,height = 8)
-    p2 = plot_avg_ifr(dt[date>=start_date])
+    p2 = plot_avg_ifr(dt[date>=start_date],line_labels)
     # ggsave(paste0(dir_fig,"avg_ifr_over_time_not_sev_scld.png"),width = 5,height = 4)
-    p = plot_grid(p1+theme(legend.position="none"),
-                  p2+theme(legend.position="none"),
-                  labels = c("A","B"))
-    l = get_legend(p1 + theme(legend.box.margin = margin(0,0,0,12)))
-    ggsave(paste0(dir_fig,"vax_cov_and_IFR.png"),plot_grid(p,l,rel_widths = c(3,.4)),width = 10,height = 4.75,bg = "white")
-    ggsave(paste0(dir_fig,"vax_cov_and_IFR.pdf"),plot_grid(p,l,rel_widths = c(3,.4)),width = 10,height = 4.75)
+    if (line_labels){
+        p = p1 + p2 + plot_annotation(tag_levels = "A")
+        ggsave(paste0(dir_fig,"vax_cov_and_IFR.png"),p,width = 10,height = 4.75,bg = "white")
+        ggsave(paste0(dir_fig,"vax_cov_and_IFR.pdf"),p,width = 10,height = 4.75)
+    } else {
+        p = plot_grid(p1+theme(legend.position="none"),
+                      p2+theme(legend.position="none"),
+                      labels = c("A","B"))
+        l = get_legend(p1 + theme(legend.box.margin = margin(0,0,0,12)))
+        ggsave(paste0(dir_fig,"vax_cov_and_IFR.png"),plot_grid(p,l,rel_widths = c(3,.5)),width = 10,height = 4.75,bg = "white")
+        ggsave(paste0(dir_fig,"vax_cov_and_IFR.pdf"),plot_grid(p,l,rel_widths = c(3,.5)),width = 10,height = 4.75)          
+    }
     
     ps = plot_grid(ps1+theme(legend.position="none",axis.text.x=element_text(angle=90,hjust=1),strip.text=element_text(size=9)),
                    ps2+theme(legend.position="none",axis.text.x=element_text(angle=90,hjust=1),strip.text=element_text(size=9)),
                    labels = c("A","B"))
     ls = get_legend(ps1 + theme(legend.box.margin = margin(0,0,0,12)))
-    ggsave(paste0(dir_fig,"vax_cov_and_IFR_by_age.png"),plot_grid(ps,ls,rel_widths = c(3,.4)),width = 10,height = 4.75)
+    ggsave(paste0(dir_fig,"vax_cov_and_IFR_by_age.png"),plot_grid(ps,ls,rel_widths = c(3,.4)),width = 10,height = 4.75,bg = "white")
     
     # Plot variant proportions
     plot_variant_proportions(vrnt_prop[country %in% dt[,unique(country)]],vrnt_data[country %in% dt[,unique(country)]])

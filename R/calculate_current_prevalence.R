@@ -1,4 +1,4 @@
-calculate_current_prevalence = function(fnm,agegroups_model,covy,pop,Ab_delay1,Ab_delay2,vax,vaxENG,vaxDEU,agegroups,vrnt_prop,ve_params,dE,dIp,dIs,dIa){
+calculate_current_prevalence = function(fnm,agegroups_model,covy,pop,Ab_delay1,Ab_delay2,vax,vaxENG,vaxDEU,agegroups,vrnt_prop,ve_params,dE,dIp,dIs,dIa,dir_out){
     # Load backcalculation output
     load(fnm)
     
@@ -9,19 +9,22 @@ calculate_current_prevalence = function(fnm,agegroups_model,covy,pop,Ab_delay1,A
     min_ages_y = as.integer(sub("y_","",names(covy)))
     covy = data.table(age_group=c(paste0(min_ages_y[1:(length(min_ages_y)-1)],"-",min_ages_y[2:length(min_ages_y)]-1),paste0(min_ages_y[length(min_ages_y)],"+")),y=covy)
     # Make data table for age-dependent symptomatic fraction
-    covy_dt = CJ(country=backcalc_dt[,unique(country)],age=0:100)
-    # Merge with population data
-    covy_dt = merge(covy_dt,pop[,.(country,age,population)],by=c("country","age"),all.x=T)
+    # countries = backcalc_dt[,unique(country)]
+    # covy_dt = CJ(country=countries,age=0:100)
+    # # Merge with population data
+    # covy_dt = merge(covy_dt,pop[,.(country,age,population)],by=c("country","age"),all.x=T)
+    covy_dt = data.table(age=0:100)
     covy_dt[,age_group:=cut(age,c(min_ages_y,Inf),labels=covy[,age_group],right=F)]
     # Merge with symptomatic fraction
     covy_dt = merge(covy_dt,covy,by="age_group",all.x=T)
     # Change age groups
     covy_dt[,age_group_model:=cut(age,c(min_ages_model,Inf),labels=agegroups_model,right=F)]
-    # Calculate population-weighted average symptomatic fraction
-    covy_dt = covy_dt[!is.na(age_group_model),.(y=sum(y*population)/sum(population)),by=.(country,age_group_model)] # exclude values where age group is missing as ages are not included in the backcalculation output
+    # # Calculate population-weighted average symptomatic fraction
+    # covy_dt = covy_dt[!is.na(age_group_model),.(y=sum(y*population)/sum(population)),by=.(country,age_group_model)] # exclude values where age group is missing as ages are not included in the backcalculation output
+    covy_dt = covy_dt[!is.na(age_group_model),.(y=mean(y)),by=.(age_group_model)]
     
-    # Plot
-    ggplot(covy_dt,aes(x=age_group_model,y=y,group=country,color=country)) + geom_line()
+    # # Plot
+    # ggplot(covy_dt,aes(x=age_group_model,y=y)) + geom_line()
     
     # ADD VACCINATION NUMBERS
     # vax = clean_ecdc_vaccination_data(ecdc_vax,country_iso_codes)
@@ -47,7 +50,7 @@ calculate_current_prevalence = function(fnm,agegroups_model,covy,pop,Ab_delay1,A
     
     
     #
-    # DISAGGREGATION OF INFECTIONS AND INITIAL CONDITIONS CALCULATION
+    # DISAGGREGATION OF INFECTIONS AND CURRENT PREVALENCE CALCULATION
     #
     
     
@@ -64,6 +67,9 @@ calculate_current_prevalence = function(fnm,agegroups_model,covy,pop,Ab_delay1,A
     
     # Add deconvolution age groups to data table
     base_dt[,age_group:=cut(get_min_age(age_group_model),c(min_ages,Inf),labels=agegroups,right=F)]
+    
+    # Create directory for saving prevalence output into
+    dir.create(paste0(dir_out,"prev/"),recursive = T)
     
     # prev_list = vector("list",nrow(exposures_samps[[1]]))
     # TODO - split this into non-LTC and LTC exposures (as they have different IFRs)
@@ -88,9 +94,9 @@ calculate_current_prevalence = function(fnm,agegroups_model,covy,pop,Ab_delay1,A
         #     geom_line() +
         #     facet_wrap(~country)    
         
-        # Calculate initial conditions
-        # prev_list[[i]] = calc_init_condns(inc_dt,vax_dt_wide,agegroups_model,covy_dt,vrnt_prop,ve_params,dE,dIp,dIs,dIa)
-        calc_curr_prev(inc_dt,vax_dt_wide,agegroups_model,covy_dt,vrnt_prop,ve_params,dE,dIp,dIs,dIa)
+        # Calculate current prevalence
+        # prev_list[[i]] = calc_curr_prev(inc_dt,vax_dt_wide,agegroups_model,covy_dt,vrnt_prop,ve_params,dE,dIp,dIs,dIa)
+        calc_curr_prev(inc_dt,vax_dt_wide,agegroups_model,covy_dt,vrnt_prop,ve_params,dE,dIp,dIs,dIa,dir_out,i)
     }
     tend = Sys.time()
     print(tend-tstart)
