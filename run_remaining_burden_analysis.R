@@ -375,14 +375,6 @@ write.csv(rem_burden_dt,paste0(dir_out,"rem_burden_output.csv"),row.names=F)
 saveRDS(ovrl_rem_burden_dt,paste0(dir_out,"ovrl_rem_burden_output.RDS"))
 write.csv(ovrl_rem_burden_dt,paste0(dir_out,"ovrl_rem_burden_output.csv"),row.names=F)
 
-med_and_CI = function(x,l,u,f=1,d=1,method="round"){
-    if (method=="signif"){
-      paste0(signif(f*x,d)," (",signif(f*l,d),"-",signif(f*u,d),")")
-    } else if (method=="round"){
-      paste0(round(f*x,d)," (",round(f*l,d),"-",round(f*u,d),")")
-    }
-}
-
 # Write table with country-level figures for paper
 tbl = ovrl_rem_burden_dt[,.(Country=country,
                             `Population (millions)`=round(population/1e6,1),

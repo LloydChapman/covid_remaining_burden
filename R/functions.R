@@ -2802,3 +2802,11 @@ calc_rem_burden = function(prev_dt,ihr_dt,ifr_dt,frlty_idx,ve_params,imm_esc=0,s
     
     return(rem_burden_dt)
 }
+
+med_and_CI = function(x,l,u,f=1,d=1,method="round"){
+    if (method=="signif"){
+        paste0(signif(f*x,d)," (",signif(f*l,d),"-",signif(f*u,d),")")
+    } else if (method=="round"){
+        paste0(round(f*x,d)," (",round(f*l,d),"-",round(f*u,d),")")
+    }
+}
