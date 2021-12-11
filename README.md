@@ -37,7 +37,7 @@ The analysis uses COVID-19 data from various sources:
   * England: [UK government COVID-19 dashboard](https://coronavirus.data.gov.uk/details/download)
   * Germany: [RKI data](https://github.com/robert-koch-institut/COVID-19-Impfungen_in_Deutschland)
 * Variant data:
-  * EU countries: [ECDC data](https://www.ecdc.europa.eu/en/publications-data/data-virus-variants-covid-19-eueea) (compiled from [GISAID](https://www.gisaid.org/) and [TESSY)](https://www.ecdc.europa.eu/en/publications-data/european-surveillance-system-tessy))
+  * EU countries: [ECDC data](https://www.ecdc.europa.eu/en/publications-data/data-virus-variants-covid-19-eueea) (compiled from [GISAID](https://www.gisaid.org/) and [TESSY)](https://www.ecdc.europa.eu/en/publications-data/european-surveillance-system-tessy)
   * England: [COG UK Consortium data for England](https://covid19.sanger.ac.uk/downloads)
 * Seroprevalence data:
   * EU countries: [SeroTracker database](https://serotracker.com/)
@@ -69,7 +69,7 @@ source("plot_remaining_burden_estimates.R")
 
 ## Output
 
-The full output of the backcalculation of infections is available on Zenodo ([https://doi.org/10.5281/zenodo.5772163](https://doi.org/10.5281/zenodo.5772163)), and the [output](output) folder contains the potential remaining burden estimates at [country level](output/2021-11-30/ovrl_rem_burden_output.csv) and by [country and age group](output/2021-11-30/rem_burden_output.csv).
+The full infection backcalculation output is available on Zenodo ([https://doi.org/10.5281/zenodo.5772163](https://doi.org/10.5281/zenodo.5772163)), and the [output](output) folder contains the potential remaining burden estimates at [country level](output/2021-11-30/ovrl_rem_burden_output.csv) and by [country and age group](output/2021-11-30/rem_burden_output.csv).
 
 ## Built With
 
