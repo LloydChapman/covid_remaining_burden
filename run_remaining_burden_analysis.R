@@ -275,46 +275,7 @@ cases_by_ageENG = fread(paste0("./data/gov_uk_data/england_cases_by_age_",date_f
 serotracker_data = fread("./data/serotracker_data/SeroTracker Serosurveys Reporting Prevalence.csv")
 sero_data = process_seroprevalence_data(serotracker_data)
 
-# download.file("https://www.ons.gov.uk/file?uri=%2fpeoplepopulationandcommunity%2fhealthandsocialcare%2fconditionsanddiseases%2fdatasets%2fcoronaviruscovid19infectionsurveydata%2f2021/covid19infectionsurveydatasets20211126england.xlsx",
-#               "./data/ons_data/covid19infectionsurveydatasets20211126england.xlsx")
-# x = read_xlsx("./data/ons_data/covid19infectionsurveydatasets20211126england.xlsx",sheet="1i",skip=5,.name_repair = "universal")
-# setDT(x)
-# setnames(x,"...1","date")
-# x[,date:=as.Date(date,origin="1901-01-01")]
-
-# cis_age = get_data("https://raw.githubusercontent.com/epiforecasts/inc2prev/master/data/cis_age.csv",
-#                    "csv",paste0("./data/ons_data/",date_fitting,"/"),"cis_age.csv")
-# cols = c("start_date","end_date")
-# cis_age[,(cols):=lapply(.SD,as.Date),.SDcols=cols]
-# ggplot(cis_age,aes(start_date,proportion_pos,group=factor(lower_age_limit),color=factor(lower_age_limit))) +
-#   geom_point()
-# min_ages_cis = cis_age[,unique(lower_age_limit)]
-# max_ages_cis = c(min_ages_cis[2:length(min_ages_cis)]-1,Inf)
-# cis_age[,age_group:=paste0(lower_age_limit,"-",max_ages_cis[match(lower_age_limit,min_ages_cis)])]
-# agegroups_cis = cis_age[,unique(age_group)]
-# 
-# cis_age_dt = popENG[,.(age,population)]
-# cis_age_dt[,age_group:=cut(age,c(min_ages_cis,Inf),labels=agegroups_cis,right=F)]
-# cis_age_dt[age %in% c(0,1),age_group:="2-10"]
-# 
-# cis_age_dt = merge(cis_age_dt,cis_age[,.(age_group,start_date,end_date,proportion_pos,proportion_pos_low_95,proportion_pos_high_95)],by="age_group",allow.cartesian=T)
-# 
-# # Change age groups
-# cis_age_dt[,age_group:=cut(age,c(min_ages,Inf),labels=agegroups,right=F)]
-# 
-# pop_age_groups = unique(cis_age_dt[,.(age_group,age,population)])[,.(population=sum(population)),by=.(age_group)]
-# cis_age_dt = cis_age_dt[,lapply(.SD,function(x) sum(x*population)/sum(population)),.SDcols=c("proportion_pos","proportion_pos_low_95","proportion_pos_high_95"),by=.(start_date,age_group)]
-# cis_age_dt = merge(cis_age_dt,pop_age_groups,by="age_group")
-# 
-# ggplot(cis_age_dt,aes(start_date,proportion_pos,color=age_group)) + geom_point()
-# 
-# ggplot(cis_age_dt,aes(x=start_date,y=proportion_pos*population/1000,color=age_group)) + geom_point()
-# 
-# ggplot() +
-#   geom_line(aes(x=date,group=age_group,color=age_group,y=exposures/1000),backcalc_dt[country=="England"]) +
-#   geom_ribbon(aes(x=date,group=age_group,color=age_group,ymin=exposures_q95l/1000,ymax=exposures_q95u/1000,fill=age_group),backcalc_dt[country=="England"],linetype=0,alpha=0.5) +
-#   labs(x="Date",y="Infections (thousands)",color="Age group",fill="Age group")  + geom_point(aes(start_date,population*proportion_pos/(1000*10),color=age_group),cis_age_dt) +coord_cartesian(ylim=c(0,5e4/1000))
-
+# Read in ONS seroprevalence estimates
 # ons_sero_data = get_data("https://www.ons.gov.uk/file?uri=%2fpeoplepopulationandcommunity%2fhealthandsocialcare%2fconditionsanddiseases%2fdatasets%2fcoronaviruscovid19antibodydatafortheuk%2f2021/20211123covid19infectionsurveydatasets1.xlsx",
 #                          "xlsx",paste0("./data/ons_data/",date_fitting,"/"),"20211123covid19infectionsurveydatasets1.xlsx",sheet="1c",skip=5)
 ons_sero_data = read_xlsx(paste0("./data/ons_data/",date_fitting,"/20211123covid19infectionsurveydatasets1.xlsx"),sheet="1c",skip=5)
@@ -347,6 +308,7 @@ print(tend-tstart)
 p2 = out$p1
 p3 = out$p2
 qprev_dt = out$qprev_dt
+saveRDS(qprev_dt,paste0(dir_out,"prev_med_and_ci.RDS"))
 
 p = p1 / p2 + theme(legend.position="bottom",axis.text.x=element_text(angle=90,hjust=1)) + plot_layout(heights = c(3,4)) + plot_annotation(tag_levels = 'A')
 ggsave(paste0(dir_fig,"infections_and_cum_prop_infected_or_vaccinated_",method,"_",source_deaths,".png"),plot=p,width = 10,height = 10)
@@ -390,6 +352,3 @@ tbl = ovrl_rem_burden_dt[,.(Country=country,
                             `Maximum remaining hospitalisations/100,000 people`=med_and_CI(cum_inc_hosp,cum_inc_hosp_q95l,cum_inc_hosp_q95u,1e5,2,method="signif"),
                             `Maximum remaining deaths/100,000 people`=med_and_CI(cum_inc_deaths,cum_inc_deaths_q95l,cum_inc_deaths_q95u,1e5,2,method="signif"))]
 write.csv(tbl,paste0(dir_out,"table_s4.csv"),row.names=F)
-
-# # Plot
-# plot_remaining_burden(rem_burden_dt,ovrl_rem_burden_dt,dir_fig)
