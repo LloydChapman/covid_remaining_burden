@@ -156,6 +156,7 @@ ihr = fread("./data/ihr_salje.csv")
 # Frailty index for relative frailty of LTC residents compared to general population
 frlty_idx = 3.8
 
+
 # 
 # DATA PROCESSING
 # 
@@ -168,6 +169,7 @@ vaxENG = out$vaxENG
 vaxDEU = out$vaxDEU
 vrnt_prop = out$vrnt_prop
 rm(out)
+save(dt,vax,vaxENG,vaxDEU,vrnt_prop,file=paste0(dir_out,"backcalculation_input.RData"))
 
 # See how many doses have unknown age group
 print(vax[,sum(count)])
