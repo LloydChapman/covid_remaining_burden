@@ -184,19 +184,21 @@ print(vax[country %in% dt[,unique(country)],.(count=sum(count)),by=.(country,age
 
 
 # Convolve distributions to get incubation period and exposure-to-death delay distribution
-# ip = readRDS("~/covidm/newcovid3/incubation_period.rds")
-# ip_mean = convert_to_nat_mean(ip$mean,ip$sd)
-# ip_sd = convert_to_nat_sd(ip$mean,ip$sd)
-# dIncub = cm_delay_lnorm(ip_mean,ip_sd/ip_mean,t_max = 30,t_step = 1)$p
-# 
-# odd = readRDS("~/covidm/newcovid3/onset_to_death_delay.rds")
-# odd_mean = convert_to_nat_mean(odd$mean,odd$sd)
-# odd_sd = convert_to_nat_sd(odd$mean,odd$sd)
-# dDeath = disc_conv(cm_delay_lnorm(ip_mean,ip_sd/ip_mean,t_max = 60,t_step = 1)$p,cm_delay_lnorm(odd_mean,odd_sd/odd_mean,t_max = 60,t_step = 1)$p)
-dIncub = disc_conv(cm_delay_gamma(2.5, 2.5, t_max = 30, t_step = 1)$p,
-                   cm_delay_gamma(2.5, 4.0, t_max = 30, t_step = 1)$p)
-dDeath = disc_conv(cm_delay_gamma(2.5, 2.5, t_max = 60, t_step = 1)$p,
-                   cm_delay_gamma(15, 2.2, t_max = 60, t_step = 1)$p)
+if (method=="epinow2"){
+  ip = readRDS("./data/incubation_period.rds")
+  ip_mean = convert_to_nat_mean(ip$mean,ip$sd)
+  ip_sd = convert_to_nat_sd(ip$mean,ip$sd)
+  dIncub = cm_delay_lnorm(ip_mean,ip_sd/ip_mean,t_max = 30,t_step = 1)$p
+  odd = readRDS("./data/onset_to_death_delay.rds")
+  odd_mean = convert_to_nat_mean(odd$mean,odd$sd)
+  odd_sd = convert_to_nat_sd(odd$mean,odd$sd)
+  dDeath = disc_conv(cm_delay_lnorm(ip_mean,ip_sd/ip_mean,t_max = 60,t_step = 1)$p,cm_delay_lnorm(odd_mean,odd_sd/odd_mean,t_max = 60,t_step = 1)$p)
+} else {
+  dIncub = disc_conv(cm_delay_gamma(2.5, 2.5, t_max = 30, t_step = 1)$p,
+                     cm_delay_gamma(2.5, 4.0, t_max = 30, t_step = 1)$p)
+  dDeath = disc_conv(cm_delay_gamma(2.5, 2.5, t_max = 60, t_step = 1)$p,
+                     cm_delay_gamma(15, 2.2, t_max = 60, t_step = 1)$p)  
+}
 
 # Normalise to ensure distributions sum to 1
 dIncub = dIncub/sum(dIncub)
