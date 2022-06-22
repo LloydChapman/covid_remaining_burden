@@ -84,7 +84,7 @@ The full infection backcalculation output is available on Zenodo ([https://doi.o
 This project is licensed under the GNU General Public License v3.0 - see the [LICENSE.txt](LICENSE.txt) file for details
 
 ## References
-1. Chapman LAC, Barnard RC, Russell TW, Abbott S, Van Zandvoort K, Davies NG, Kucharski AJ. Unexposed populations and potential COVID-19 burden in European countries as of 21st November 2021 [https://doi.org/10.1101/2021.11.10.21266166](https://doi.org/10.1101/2021.11.10.21266166).
+1. Chapman LAC, Barnard RC, Russell TW, Abbott S, Van Zandvoort K, Davies NG, Kucharski AJ. Unexposed populations and potential COVID-19 hospitalisations and deaths in European countries as per data up to 21st November 2021. Euro Surveill. 2022;27(1):pii=2101038. [https://doi.org/10.2807/1560-7917.ES.2022.27.1.2101038](https://doi.org/10.2807/1560-7917.ES.2022.27.1.2101038).
 
 2. Riffe T, Acosta E, the COVerAGE-DB team, Acosta EJ, Manuel Aburto D, Alburez-Gutierrez A, et al. Data Resource Profile: COVerAGE-DB: a global demographic database of COVID-19 cases and deaths. Int J Epidemiol. 2021 May 15;50(2):390–390f.
 

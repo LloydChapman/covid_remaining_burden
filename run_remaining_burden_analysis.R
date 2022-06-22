@@ -70,7 +70,7 @@ method = "ride" #"epinow2" #
 
 # Set up parallelisation
 if (method=="epinow2"){
-  options(mc.cores=4)
+  options(mc.cores = 4)
 } else {
   # Register parallel backend
   # registerDoParallel(cores = detectCores()-1)
@@ -320,6 +320,7 @@ ggsave(paste0(dir_fig,"infections_and_cum_prop_infected_or_vaccinated_",method,"
 
 # Plot proportion vaccinated/previously infected in England vs ONS seroprevalence data
 ggsave(paste0(dir_fig,"cum_prop_infected_or_vaccinated_vs_seroprev_",method,"_",source_deaths,"ENG.png"),plot=p3,width = 8,height=5.2)
+
 
 #
 # REMAINING BURDEN CALCULATION
