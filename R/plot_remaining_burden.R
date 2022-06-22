@@ -3,25 +3,27 @@ plot_remaining_burden = function(rem_burden_dt,ovrl_rem_burden_dt,dir_fig="./fig
     p1 = ggplot(melt(rem_burden_dt,measure.vars = c("pop_prop_u","pop_prop_i","pop_prop_v")),aes(x=value,y=age_group_model,alpha=variable)) +
         geom_col(position = "stack") +
         scale_alpha_manual(name="",values=c(0.3,0.6,1),c("Unvaccinated &\nunexposed","Previously\ninfected","Partially/fully\nvaccinated &\nuninfected")) +
-        labs(x="Proportion of population",y="Age group") +
+        labs(x="Proportion of population",y="Age group (years)") +
         theme(axis.text.x=element_text(size=11)) +
         facet_wrap(~country)
-    # ggsave(paste0(dir_fig,"vax_cov_pop_pyramids",date_fitting,".png"),width = 10,height = 8)
+    ggsave(paste0(dir_fig,"vax_cov_pop_pyramids",date_fitting,".png"),p1 + theme(axis.text.x=element_text(angle=45,hjust=1)),width = 10,height = 8)
+    ggsave(paste0(dir_fig,"vax_cov_pop_pyramids",date_fitting,".pdf"),p1 + theme(axis.text.x=element_text(angle=45,hjust=1)),width = 10,height = 8)
     
     # Plot maximum remaining hospitalisations and deaths by age
     p2 = ggplot(melt(rem_burden_dt,measure.vars = c("cum_inc_hosp_u","cum_inc_hosp_i","cum_inc_hosp_v")),aes(y=age_group_model)) +
         geom_col(aes(x=value*1e5,alpha=variable),position="stack") +
         geom_errorbarh(aes(xmin=cum_inc_hosp_q95l*1e5,xmax=cum_inc_hosp_q95u*1e5),height=0.5) +
-        scale_alpha_manual(name="",values=c(0.3,0.6,1),labels=c("Unvaccinated &\nunexposed","Previously\ninfected","Partially/fully\nvaccinated &\nuninfected")) +
-        labs(x="Maximum remaining hospitalisations/100,000 population",y="Age group") +
-        facet_wrap(~country)
+        scale_alpha_manual(name="",values=c(0.3,0.6,1),labels=c("Unvaccinated &\nunexposed","Previously\ninfected","Partially/fully\nvaccinated & uninfected")) +
+        labs(x="Maximum remaining hospitalisations/100,000 population",y="Age group (years)") +
+        facet_wrap(~country) +
+        theme(legend.position="bottom")
     # ggsave(paste0(dir_fig,"rem_hosps_by_age",date_fitting,".png"),width = 10,height = 8)
     
     p3 = ggplot(melt(rem_burden_dt,measure.vars = c("cum_inc_deaths_u","cum_inc_deaths_i","cum_inc_deaths_v")),aes(y=age_group_model)) +
         geom_col(aes(x=value*1e5,alpha=variable),position="stack") +
         geom_errorbarh(aes(xmin=cum_inc_deaths_q95l*1e5,xmax=cum_inc_deaths_q95u*1e5),height=0.5) +
         scale_alpha_manual(name="",values=c(0.3,0.6,1),labels=c("Unvaccinated &\nunexposed","Previously\ninfected","Partially/fully\nvaccinated & uninfected")) +
-        labs(x="Maximum remaining deaths/100,000 population",y="Age group") +
+        labs(x="Maximum remaining deaths/100,000 population",y="Age group (years)") +
         facet_wrap(~country) +
         theme(legend.position = "bottom")
     # ggsave(paste0(dir_fig,"rem_deaths_by_age",date_fitting,".png"),width = 10,height = 8)
@@ -31,26 +33,31 @@ plot_remaining_burden = function(rem_burden_dt,ovrl_rem_burden_dt,dir_fig="./fig
     p4 = ggplot(ovrl_rem_burden_dt,aes(x=cum_prop_v)) +
         geom_point(aes(y=cum_inc_hosp*1e5,size=cum_prop_exp),alpha=0.5,stroke=0) +
         geom_errorbar(aes(ymin=cum_inc_hosp_q95l*1e5,ymax=cum_inc_hosp_q95u*1e5),width = 0.01,alpha=0.5) +
-        geom_text(aes(y=cum_inc_hosp*1e5,label=country),size=3.5,hjust=-0.2,vjust=0.4) +
+        geom_text_repel(aes(y=cum_inc_hosp*1e5,label=country),size=3.5,min.segment.length=0.7,nudge_x=0.045) +
         xlim(NA,1) +
         labs(x="Proportion who have received at least one dose",
              y="Maximum remaining hospitalisations/100,000 population",
-             size="Cumulative\nproportion\ninfected") +
-        scale_y_log10()
+             size="Cumulative proportion infected") +
+        scale_y_log10() +
+        theme(legend.position="bottom")
     # ggsave(paste0(dir_fig,"rem_hosps_vs_prop_vax",date_fitting,".png"),width = 8,height = 6.4)
     
-    p = (p1 + theme(legend.position="none",axis.text.x=element_text(angle=45,hjust=1)) +
-             p2 + theme(axis.text.x=element_text(angle=45,hjust=1)) +
-             coord_cartesian(xlim = c(0,rem_burden_dt[!(country %in% c("Germany","Greece","Romania","Slovakia")),max(cum_inc_hosp_q95u)*1e5]))) / 
-        p4 + plot_layout(heights = c(1,1.5)) + plot_annotation(tag_levels = 'A')
-    ggsave(paste0(dir_fig,"vax_cov_and_rem_hosps",date_fitting,".png"),plot=p,width = 16,height = 15)
-    ggsave(paste0(dir_fig,"vax_cov_and_rem_hosps",date_fitting,".pdf"),plot=p,width = 16,height = 15)
+    # p = (p1 + theme(legend.position="none",axis.text.x=element_text(angle=45,hjust=1)) +
+    #          p2 + theme(axis.text.x=element_text(angle=45,hjust=1)) +
+    #          coord_cartesian(xlim = c(0,rem_burden_dt[!(country %in% c("Germany","Greece","Romania","Slovakia")),max(cum_inc_hosp_q95u)*1e5]))) / 
+    #     p4 + plot_layout(heights = c(1,1.5)) + plot_annotation(tag_levels = 'A')
+    p = plot_grid(
+        p2 + theme(axis.text.x=element_text(angle=45,hjust=1)) +
+                      coord_cartesian(xlim = c(0,rem_burden_dt[!(country %in% c("Germany","Greece","Romania","Slovakia")),max(cum_inc_hosp_q95u)*1e5])),
+        p4,labels=c("A","B"))
+    ggsave(paste0(dir_fig,"vax_cov_and_rem_hosps",date_fitting,".png"),p,width = 14.4,height = 6)
+    ggsave(paste0(dir_fig,"vax_cov_and_rem_hosps",date_fitting,".pdf"),p,width = 14.4,height = 6)
     
     # deaths against vaccine coverage
     p5 = ggplot(ovrl_rem_burden_dt,aes(x=cum_prop_v)) +
         geom_point(aes(y=cum_inc_deaths*1e5,size=cum_prop_exp),alpha=0.5,stroke=0) +
         geom_errorbar(aes(ymin=cum_inc_deaths_q95l*1e5,ymax=cum_inc_deaths_q95u*1e5),width = 0.01,alpha=0.5) +
-        geom_text(aes(y=cum_inc_deaths*1e5,label=country),size=4,hjust=-0.15,vjust=0.4) +
+        geom_text_repel(aes(y=cum_inc_deaths*1e5,label=country),size=4,min.segment.length=0.7,nudge_x=0.05) +
         xlim(NA,1) +
         labs(x="Proportion who have received at least one dose",
              y="Maximum remaining deaths/100,000 population",
@@ -59,8 +66,8 @@ plot_remaining_burden = function(rem_burden_dt,ovrl_rem_burden_dt,dir_fig="./fig
         theme(legend.position = "bottom")
     # ggsave(paste0(dir_fig,"rem_deaths_vs_prop_vax",date_fitting,".png"),width = 8,height = 6.4)
     pp = plot_grid(
-        p3 + coord_cartesian(xlim = c(0,rem_burden_dt[!(country %in% c("Germany","Greece","Romania","Slovakia")),max(cum_inc_deaths_q95u)*1e5])) + 
-            p5,rel_widths=c(1,1),labels=c("A","B"))
+        p3 + coord_cartesian(xlim = c(0,rem_burden_dt[!(country %in% c("Germany","Greece","Romania","Slovakia")),max(cum_inc_deaths_q95u)*1e5])), 
+        p5,rel_widths=c(1,1),labels=c("A","B"))
     ggsave(paste0(dir_fig,"vax_cov_and_rem_deaths",date_fitting,".png"),pp,width = 14.4,height = 6)
     
     # hospitalisations against proportion aged 60+
@@ -179,8 +186,8 @@ plot_remaining_burden_spi_m = function(rem_burden_dt,ovrl_rem_burden_dt,dir_fig=
     
     # p = (p1 + theme(legend.position="none",axis.text.x=element_text(angle=45,hjust=1)) + p2 + theme(axis.text.x=element_text(angle=45,hjust=1))) / 
     #     p4 + plot_layout(heights = c(1,1.5)) + plot_annotation(tag_levels = 'A')
-    # ggsave(paste0(dir_fig,"vax_cov_and_rem_hosps",date_fitting,".png"),plot=p,width = 16,height = 15)
-    # ggsave(paste0(dir_fig,"vax_cov_and_rem_hosps",date_fitting,".pdf"),plot=p,width = 16,height = 15)
+    # ggsave(paste0(dir_fig,"vax_cov_and_rem_hosps",date_fitting,".png"),p,width = 16,height = 15)
+    # ggsave(paste0(dir_fig,"vax_cov_and_rem_hosps",date_fitting,".pdf"),p,width = 16,height = 15)
     # 
     # # deaths against vaccine coverage
     # p5 = ggplot(ovrl_rem_burden_dt,aes(x=cum_prop_v)) +
